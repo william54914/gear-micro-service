@@ -10,7 +10,7 @@ class AmazonService {
 		});
 	}
 
-	async getInventory (marketplaceId) {
+	async getInventory () {
 		try {
 			// Set up authentication before making the request
 			this.spApi.auth(
@@ -38,10 +38,56 @@ class AmazonService {
 
 			const response = await this.spApi.getInventorySummaries({
 				query: {
-					marketplaceIds: [ marketplaceId ],
+					marketplaceIds: [ 'ATVPDKIKX0DER' ],
 					details: true,
 					granularityType: 'Marketplace',
-					granularityId: marketplaceId
+					granularityId: 'ATVPDKIKX0DER'
+				}
+			});
+
+			return response.data;
+		} catch (error) {
+			console.error('Error in AmazonService.getInventory:', error);
+			if (error.data && error.data.errors) {
+				console.error('API Error Details:', JSON.stringify(error.data.errors, null, 2));
+			}
+			throw error;
+		}
+	}
+
+
+	async getAllListings () {
+		try {
+			// Set up authentication before making the request
+			this.spApi.auth(
+				process.env.AMAZON_CLIENT_ID,
+				process.env.AMAZON_CLIENT_SECRET
+			);
+
+			// Set up AWS credentials
+			this.spApi.auth(
+				process.env.AWS_ACCESS_KEY_ID,
+				process.env.AWS_SECRET_ACCESS_KEY
+			);
+
+			// Set up refresh token
+			if (process.env.AMAZON_REFRESH_TOKEN) {
+				this.spApi.auth(process.env.AMAZON_REFRESH_TOKEN);
+			}
+
+			// Set up role ARN if provided
+			if (process.env.AMAZON_ROLE_ARN) {
+				this.spApi.config({
+					roleArn: process.env.AMAZON_ROLE_ARN
+				});
+			}
+
+			const response = await this.spApi.getReports({
+				query: {
+					marketplaceIds: [ 'ATVPDKIKX0DER' ],
+					details: true,
+					granularityType: 'Marketplace',
+					granularityId: 'ATVPDKIKX0DER'
 				}
 			});
 

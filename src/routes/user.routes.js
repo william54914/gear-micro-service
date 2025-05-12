@@ -1,12 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
 
 // Get all users
 router.get('/', async (req, res) => {
   try {
-    const users = await prisma.user.findMany();
+    // const users = await prisma.user.findMany();
     res.json(users);
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -18,15 +16,15 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await prisma.user.findUnique({
-      where: { id: parseInt(id) }
-    });
+    // const user = await prisma.user.findUnique({
+    //   where: { id: parseInt(id) }
+    // });
     
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    // if (!user) {
+    //   return res.status(404).json({ error: 'User not found' });
+    // }
     
-    res.json(user);
+    res.json(id);
   } catch (error) {
     console.error('Error fetching user:', error);
     res.status(500).json({ error: 'Failed to fetch user' });

@@ -1,3 +1,7 @@
+const dotenv = require('dotenv');
+
+dotenv.config();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -6,6 +10,17 @@ const routes = require('./routes/index.js');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Database
+const sequelize = require('./config/database.js'); 
+// test connection
+sequelize.authenticate()
+.then(() => {
+    console.log('Connection has been established successfully.');
+})
+.catch(err => {
+    console.error('Unable to connect to the database:', err);
+});
 
 // Middleware
 app.use(cors());
