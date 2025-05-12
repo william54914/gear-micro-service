@@ -9,27 +9,59 @@ User.init({
     primaryKey: true,
     autoIncrement: true
   },
+  username: {
+    type: DataTypes.STRING,
+    unique: true,
+    allowNull: false
+  },
+  password_hash: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  first_name: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  last_name: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  date_of_birth: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
   email: {
     type: DataTypes.STRING,
     unique: true,
     allowNull: false
   },
-  name: {
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
+  role: {
     type: DataTypes.STRING,
-    allowNull: true
+    allowNull: false,
+    defaultValue: 'warehouse'
   },
-  createdAt: {
+  created_at: {
     type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
+    defaultValue: DataTypes.NOW,
+    field: 'created_at'
   },
-  updatedAt: {
+  updated_at: {
     type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
+    defaultValue: DataTypes.NOW,
+    field: 'updated_at'
   }
 }, {
   sequelize,
   modelName: 'User',
-  timestamps: true
+  tableName: 'users',
+  timestamps: true,
+  underscored: true, // Use snake_case for field names
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
 
 module.exports = User; 
