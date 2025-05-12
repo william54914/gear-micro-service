@@ -28,4 +28,24 @@ router.get('/inventory/:marketplaceId', async (req, res) => {
   }
 });
 
+/**
+ * @route GET /api/amazon/listings
+ * @desc Get all merchant listings from Amazon
+ * @access Private
+ */
+router.get('/listings', async (req, res) => {
+  try {
+    const listings = await amazonService.getAllListings();
+
+    res.json(listings);
+  } catch (error) {
+    console.error('Error fetching listings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch listings',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router; 
