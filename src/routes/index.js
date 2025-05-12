@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-
-// Import route modules
-const userRoutes = require('./user.routes');
+const userRoutes = require('./user.routes.js');
+const amazonRoutes = require('./amazon.routes.js');
 
 // Health check route
 router.get('/health', (req, res) => {
@@ -11,5 +10,6 @@ router.get('/health', (req, res) => {
 
 // Mount routes
 router.use('/users', userRoutes);
+router.use('/amazon', amazonRoutes);
 
 module.exports = router; 
