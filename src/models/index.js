@@ -4,6 +4,9 @@ const AmazonInfo = require('./AmazonInfo');
 const AmazonPrice = require('./AmazonPrice');
 const AmazonQuantity = require('./AmazonQuantity');
 const AmazonZShop = require('./AmazonZShop');
+const RestockVitals = require('./RestockVitals');
+const RestockInfo = require('./RestockInfo');
+const RestockCost = require('./RestockCost');
 
 // Define relationships
 // AmazonVitals is the central table that all other tables reference via SKU
@@ -47,11 +50,36 @@ AmazonZShop.belongsTo(AmazonVitals, {
   targetKey: 'sku'
 });
 
+// Define relationships for restock models
+// RestockVitals is the central table for restock data
+RestockVitals.hasOne(RestockInfo, {
+  foreignKey: 'sku',
+  sourceKey: 'sku',
+  as: 'info'
+});
+RestockInfo.belongsTo(RestockVitals, {
+  foreignKey: 'sku',
+  targetKey: 'sku'
+});
+
+RestockVitals.hasOne(RestockCost, {
+  foreignKey: 'sku',
+  sourceKey: 'sku',
+  as: 'cost'
+});
+RestockCost.belongsTo(RestockVitals, {
+  foreignKey: 'sku',
+  targetKey: 'sku'
+});
+
 module.exports = {
   User,
   AmazonVitals,
   AmazonInfo,
   AmazonPrice,
   AmazonQuantity,
-  AmazonZShop
+  AmazonZShop,
+  RestockVitals,
+  RestockInfo,
+  RestockCost
 }; 

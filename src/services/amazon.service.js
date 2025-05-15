@@ -208,16 +208,12 @@ class AmazonService {
 			
 			console.log(`Successfully parsed ${results.length} listings`);
 			
-			// Return a sample of the data to avoid overwhelming the response
-			const sampleSize = 100;
-			const sample = results.slice(0, sampleSize);
-			
+			// Return all data instead of just a sample
 			return {
 				success: true,
 				message: 'Listings retrieved successfully',
 				count: results.length,
-				sampleSize,
-				data: sample
+				data: results
 			};
 		} catch (error) {
 			console.error('Error in AmazonService.getAllListings:', error);
