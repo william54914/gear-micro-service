@@ -75,6 +75,11 @@ class FtpService {
     try {
       await this.connect(config);
       const list = await this.client.list(remotePath);
+      console.log('Raw FTP list result:', list);
+      if (!Array.isArray(list)) {
+        console.error('FTP listFiles: list is not an array:', list);
+        return [];
+      }
       return list.map(item => ({
         name: item.name,
         type: item.type,

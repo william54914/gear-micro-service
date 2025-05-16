@@ -11,14 +11,15 @@ class LS2FtpService extends BaseService {
   constructor() {
     super('ls2');
 
-    // Skip configuration in test environment
-    if (process.env.NODE_ENV === 'test') {
+    // Skip configuration in test environment unless FORCE_LS2_REAL is set
+    if (process.env.NODE_ENV === 'test' && !process.env.FORCE_LS2_REAL) {
       this.config = {
         host: 'test-host',
         user: 'test-user',
         password: 'test-password',
         secure: false
       };
+      console.log('LS2 FTP config (test):', this.config);
       return;
     }
 
@@ -29,8 +30,10 @@ class LS2FtpService extends BaseService {
       password: config.ls2.password,
       secure: config.ls2.secure || false
     };
+    console.log('LS2 FTP config (real):', this.config);
 
     this.ftpService = new FtpService(this.config);
+    console.log('FtpService instance:', this.ftpService);
     this.tmpDir = path.join(__dirname, '../../../tmp');
     this.vendorName = "LS2 Helmets";
     

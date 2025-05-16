@@ -64,7 +64,7 @@ router.get('/ls2/files', async (req, res) => {
     res.json(files);
   } catch (error) {
     console.error('Error listing LS2 FTP files:', error);
-    res.status(500).json({ error: 'Failed to list LS2 FTP files', message: error.message });
+    res.status(500).json({ error: 'Failed to list LS2 FTP files', message: error.message, stack: error.stack });
   }
 });
 

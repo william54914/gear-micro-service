@@ -6,13 +6,15 @@ const { promisify } = require('util');
 const BaseService = require('./base.service');
 const gunzip = promisify(zlib.gunzip);
 const config = require('../config/env');
+const aws4 = require('aws4');
+const https = require('https');
 
 class AmazonService extends BaseService {
 	constructor() {
 		super('amazon'); // This will validate Amazon config
 
-		// Skip configuration in test environment
-		if (process.env.NODE_ENV === 'test') {
+		// Skip configuration in test environment unless FORCE_AMAZON_REAL is set
+		if (process.env.NODE_ENV === 'test' && !process.env.FORCE_AMAZON_REAL) {
 			this.config = {
 				region: 'us-east-1',
 				refreshToken: 'test-refresh-token',
@@ -35,7 +37,10 @@ class AmazonService extends BaseService {
 
 		this.spApi = spApi;
 		this.spApi.config({
-			region: config.amazon.region
+			region: process.env.AMAZON_REGION || 'us-east-1',
+			accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+			secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+			role: process.env.AMAZON_ROLE_ARN
 		});
 		
 		this.baseUrl = 'https://sellingpartnerapi-na.amazon.com';
@@ -43,26 +48,54 @@ class AmazonService extends BaseService {
 
 	async getInventory() {
 		try {
+			console.log('Amazon Auth Debug Info:');
+			console.log('Client ID:', process.env.AMAZON_CLIENT_ID ? 'Set' : 'Not set');
+			console.log('Client Secret:', process.env.AMAZON_CLIENT_SECRET ? 'Set' : 'Not set');
+			console.log('Refresh Token:', process.env.AMAZON_REFRESH_TOKEN ? 'Set' : 'Not set');
+			console.log('AWS Access Key:', process.env.AWS_ACCESS_KEY_ID ? 'Set' : 'Not set');
+			console.log('AWS Secret Key:', process.env.AWS_SECRET_ACCESS_KEY ? 'Set' : 'Not set');
+			console.log('Role ARN:', process.env.AMAZON_ROLE_ARN ? 'Set' : 'Not set');
+			console.log('Region:', process.env.AMAZON_REGION || 'us-east-1');
+
 			const accessToken = await this.getAccessToken();
-			
-			const response = await this.spApi.getInventorySummaries({
-				query: {
-					marketplaceIds: ['ATVPDKIKX0DER'],
-					details: true,
-					granularityType: 'Marketplace',
-					granularityId: 'ATVPDKIKX0DER'
-				},
+
+			const opts = {
+				host: 'sellingpartnerapi-na.amazon.com',
+				path: '/fba/inventory/v1/summaries?marketplaceIds=ATVPDKIKX0DER&details=true&granularityType=Marketplace&granularityId=ATVPDKIKX0DER',
+				service: 'execute-api',
+				region: process.env.AMAZON_REGION || 'us-east-1',
+				method: 'GET',
 				headers: {
-					'x-amz-access-token': accessToken
+					'x-amz-access-token': accessToken,
+					'Content-Type': 'application/json'
 				}
+			};
+			aws4.sign(opts, {
+				accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+				secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
 			});
 
-			return this.success(response.data, 'Inventory retrieved successfully');
+			return await new Promise((resolve, reject) => {
+				https.get(opts, (res) => {
+					let data = '';
+					res.on('data', chunk => data += chunk);
+					res.on('end', () => {
+						try {
+							const json = JSON.parse(data);
+							if (res.statusCode === 200) {
+								resolve(json);
+							} else {
+								console.error('Amazon API error:', json);
+								reject(new Error(json.message || 'Amazon API error'));
+							}
+						} catch (err) {
+							reject(err);
+						}
+					});
+				}).on('error', reject);
+			});
 		} catch (error) {
 			console.error('Error in AmazonService.getInventory:', error);
-			if (error.data?.errors) {
-				console.error('API Error Details:', JSON.stringify(error.data.errors, null, 2));
-			}
 			throw error;
 		}
 	}
@@ -71,16 +104,16 @@ class AmazonService extends BaseService {
 		try {
 			// Log the raw values for debugging (but mask sensitive parts)
 			console.log('Debug Auth Parameters:');
-			console.log('Client ID:', this.config.amazon.clientId?.slice(0, 6) + '...');
-			console.log('Client Secret:', this.config.amazon.clientSecret?.slice(0, 6) + '...');
-			console.log('Refresh Token Length:', this.config.amazon.refreshToken?.length);
+			console.log('Client ID:', config.amazon.clientId?.slice(0, 6) + '...');
+			console.log('Client Secret:', config.amazon.clientSecret?.slice(0, 6) + '...');
+			console.log('Refresh Token Length:', config.amazon.refreshToken?.length);
 
 			// Properly encode each parameter individually
 			const params = {
 				grant_type: 'refresh_token',
-				refresh_token: encodeURIComponent(this.config.amazon.refreshToken),
-				client_id: encodeURIComponent(this.config.amazon.clientId),
-				client_secret: encodeURIComponent(this.config.amazon.clientSecret)
+				refresh_token: encodeURIComponent(config.amazon.refreshToken),
+				client_id: encodeURIComponent(config.amazon.clientId),
+				client_secret: encodeURIComponent(config.amazon.clientSecret)
 			};
 
 			// Make the request with properly encoded parameters

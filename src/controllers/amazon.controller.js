@@ -13,10 +13,15 @@ class AmazonController extends BaseController {
   /**
    * Get Amazon inventory
    */
-  getInventory = this.asyncHandler(async (req, res) => {
-    const inventory = await this.service.getInventory();
-    this.sendSuccess(res, inventory);
-  });
+  getInventory = async (req, res, next) => {
+    try {
+      const inventory = await this.service.getInventory();
+      this.sendSuccess(res, inventory);
+    } catch (error) {
+      console.error('Amazon getInventory error:', error);
+      res.status(500).json({ error: 'Failed to get Amazon inventory', message: error.message, stack: error.stack });
+    }
+  };
 
   /**
    * Get all Amazon listings with pagination and filtering

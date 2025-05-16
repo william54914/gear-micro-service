@@ -1,22 +1,29 @@
+require('dotenv').config();
 const BaseService = require('./base.service');
 const config = require('../config/env');
+const fetch = require('isomorphic-fetch');
+const msal = require('@azure/msal-node');
+const Client = require('@microsoft/microsoft-graph-client').Client;
 
 // Only require these in non-test environment
-let msal;
-let Client;
-let isomorphicFetch;
-if (process.env.NODE_ENV !== 'test') {
-  msal = require('@azure/msal-node');
-  Client = require('@microsoft/microsoft-graph-client').Client;
-  isomorphicFetch = require('isomorphic-fetch');
-}
+let msalClient;
+let graphClient;
 
 class OneDriveService extends BaseService {
   constructor() {
     super('onedrive');
 
-    // Skip configuration in test environment
-    if (process.env.NODE_ENV === 'test') {
+    // Log environment variables for debugging
+    console.log('OneDrive Environment Variables:');
+    console.log('ONEDRIVE_CLIENT_ID:', process.env.ONEDRIVE_CLIENT_ID);
+    console.log('ONEDRIVE_CLIENT_SECRET:', process.env.ONEDRIVE_CLIENT_SECRET?.substring(0, 5) + '...');
+    console.log('ONEDRIVE_TENANT_ID:', process.env.ONEDRIVE_TENANT_ID);
+    console.log('ONEDRIVE_USER_EMAIL:', process.env.ONEDRIVE_USER_EMAIL);
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('FORCE_ONEDRIVE_REAL:', process.env.FORCE_ONEDRIVE_REAL);
+
+    // Skip configuration in test environment unless FORCE_ONEDRIVE_REAL is set
+    if (process.env.NODE_ENV === 'test' && !process.env.FORCE_ONEDRIVE_REAL) {
       this.config = {
         clientId: 'test-client-id',
         clientSecret: 'test-client-secret',
@@ -36,20 +43,32 @@ class OneDriveService extends BaseService {
       return;
     }
 
-    this.msalClient = new msal.ConfidentialClientApplication({
-      auth: {
-        clientId: config.onedrive.clientId,
-        authority: `https://login.microsoftonline.com/${config.onedrive.tenantId}`,
-        clientSecret: config.onedrive.clientSecret
-      }
-    });
-
+    // Use environment variables directly instead of config
     this.config = {
+      clientId: process.env.ONEDRIVE_CLIENT_ID,
+      clientSecret: process.env.ONEDRIVE_CLIENT_SECRET,
+      tenantId: process.env.ONEDRIVE_TENANT_ID,
+      userEmail: process.env.ONEDRIVE_USER_EMAIL,
       scopes: ['https://graph.microsoft.com/.default']
     };
 
-    this.userEmail = this.config.onedrive.userEmail;
+    // Initialize MSAL client with environment variables
+    this.msalClient = new msal.ConfidentialClientApplication({
+      auth: {
+        clientId: this.config.clientId,
+        authority: `https://login.microsoftonline.com/${this.config.tenantId}`,
+        clientSecret: this.config.clientSecret
+      }
+    });
+
+    this.userEmail = this.config.userEmail;
     this.token = null;
+
+    // Log the final configuration
+    console.log('Final OneDrive Configuration:');
+    console.log('Client ID:', this.config.clientId);
+    console.log('Tenant ID:', this.config.tenantId);
+    console.log('User Email:', this.config.userEmail);
   }
 
   async getToken() {
@@ -59,7 +78,8 @@ class OneDriveService extends BaseService {
       const result = await this.msalClient.acquireTokenByClientCredential({
         scopes: ["https://graph.microsoft.com/.default"]
       });
-
+      console.log('MSAL acquireToken result:', JSON.stringify(result, null, 2));
+      console.log('MSAL token:', result.accessToken);
       this.token = result.accessToken;
       return this.token;
     } catch (error) {
@@ -76,11 +96,10 @@ class OneDriveService extends BaseService {
     };
 
     try {
-      const response = await isomorphicFetch({
+      const response = await fetch(`https://graph.microsoft.com/v1.0${endpoint}`, {
         method,
-        url: `https://graph.microsoft.com/v1.0${endpoint}`,
         headers,
-        data
+        body: data ? JSON.stringify(data) : undefined
       });
       return response.json();
     } catch (error) {
@@ -94,13 +113,15 @@ class OneDriveService extends BaseService {
       const items = await this.makeGraphRequest(
         `/users/${this.userEmail}/drive/root/children`
       );
-
+      console.log('API response for root folders:', JSON.stringify(items, null, 2));
+      if (!items || !Array.isArray(items.value)) {
+        throw new Error('API response missing or malformed: ' + JSON.stringify(items));
+      }
       const folders = items.value.map(item => ({
         name: item.name,
         type: item.folder ? 'folder' : 'file',
         id: item.id
       }));
-
       return this.success(folders, 'Root folders retrieved successfully');
     } catch (error) {
       console.error('Failed to list folders:', error.message);
@@ -113,7 +134,10 @@ class OneDriveService extends BaseService {
       const items = await this.makeGraphRequest(
         `/users/${this.userEmail}/drive/items/${folderId}/children`
       );
-
+      console.log('API response for files in folder:', JSON.stringify(items, null, 2));
+      if (!items || !Array.isArray(items.value)) {
+        throw new Error('API response missing or malformed: ' + JSON.stringify(items));
+      }
       const files = items.value.map(item => ({
         name: item.name,
         id: item.id,
@@ -122,7 +146,6 @@ class OneDriveService extends BaseService {
         modifiedDateTime: item.lastModifiedDateTime,
         type: item.folder ? 'folder' : 'file'
       }));
-
       return this.success(files, 'Folder contents retrieved successfully');
     } catch (error) {
       console.error('Failed to list files in folder:', error.message);
@@ -139,13 +162,11 @@ class OneDriveService extends BaseService {
       
       // Download the file content
       const token = await this.getToken();
-      const response = await isomorphicFetch({
+      const response = await fetch(fileInfo['@microsoft.graph.downloadUrl'], {
         method: 'GET',
-        url: fileInfo['@microsoft.graph.downloadUrl'],
         headers: {
           "Authorization": `Bearer ${token}`
-        },
-        responseType: 'text'
+        }
       });
 
       return response.text();

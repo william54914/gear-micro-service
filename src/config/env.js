@@ -142,7 +142,12 @@ const testConfig = {
 };
 
 // Export configuration based on environment
-module.exports = process.env.NODE_ENV === 'test' ? testConfig : {
+module.exports = (
+  process.env.NODE_ENV === 'test' &&
+  !process.env.FORCE_ONEDRIVE_REAL &&
+  !process.env.FORCE_LS2_REAL &&
+  !process.env.FORCE_AMAZON_REAL
+) ? testConfig : {
   // JWT config
   jwt: {
     secret: process.env.SECRET_KEY || 'dev-secret-key',
