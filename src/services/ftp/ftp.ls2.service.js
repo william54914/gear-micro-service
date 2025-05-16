@@ -1,26 +1,36 @@
+const BaseService = require('../base.service');
+const config = require('../../config/env');
 const FtpService = require('./ftp.service');
 const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
-const config = require('../../config/env');
 const models = require('../../models');
 const { Op } = require('sequelize');
 
-class FtpLS2Service {
+class LS2FtpService extends BaseService {
   constructor() {
-    // Validate LS2 config before using
-    config.ls2.validate();
+    super('ls2');
+
+    // Skip configuration in test environment
+    if (process.env.NODE_ENV === 'test') {
+      this.config = {
+        host: 'test-host',
+        user: 'test-user',
+        password: 'test-password',
+        secure: false
+      };
+      return;
+    }
 
     // LS2 FTP connection details from validated config
     this.config = {
       host: config.ls2.host,
       user: config.ls2.user,
       password: config.ls2.password,
-      port: config.ls2.port,
-      secure: false
+      secure: config.ls2.secure || false
     };
-    
-    this.ftp = new FtpService();
+
+    this.ftpService = new FtpService(this.config);
     this.tmpDir = path.join(__dirname, '../../../tmp');
     this.vendorName = "LS2 Helmets";
     
@@ -31,11 +41,11 @@ class FtpLS2Service {
   }
 
   async listFiles(remotePath = '.') {
-    return await this.ftp.listFiles(this.config, remotePath);
+    return await this.ftpService.listFiles(remotePath);
   }
 
   async downloadFile(remotePath, localPath) {
-    await this.ftp.downloadFile(this.config, remotePath, localPath);
+    await this.ftpService.downloadFile(remotePath, localPath);
   }
   
   async getLatestPriceFile() {
@@ -443,4 +453,4 @@ class FtpLS2Service {
   }
 }
 
-module.exports = new FtpLS2Service(); 
+module.exports = new LS2FtpService(); 

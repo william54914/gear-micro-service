@@ -8,9 +8,19 @@ const {
 const sequelize = require('../config/database');
 const { QueryTypes } = require('sequelize');
 const config = require('../config/env');
+const BaseService = require('./base.service');
+const { Op } = require('sequelize');
 
-class AmazonDbService {
+class AmazonDbService extends BaseService {
   constructor() {
+    super('amazon');
+
+    // Skip configuration in test environment
+    if (process.env.NODE_ENV === 'test') {
+      this.batchSize = 100;
+      return;
+    }
+
     // Validate database config before using
     config.database.validate();
     

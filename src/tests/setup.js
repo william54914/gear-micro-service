@@ -5,13 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 // Create models
-let User;
-try {
-  User = require('../models/User');
-} catch (error) {
-  // If we can't load the real User model, use the mock
-  User = require('./mocks/models').User;
-}
+const models = require('../models');
 
 // Set test environment
 process.env.NODE_ENV = 'test';
@@ -23,51 +17,24 @@ const testSequelize = new Sequelize({
   logging: false
 });
 
-// Only init if User model has the init function (real model, not mock)
-if (typeof User.init === 'function' && User.attributes) {
-  // Initialize models with test connection
-  User.init(User.attributes, {
-    sequelize: testSequelize,
-    modelName: 'User',
-    tableName: 'users',
-    hooks: {
-      beforeCreate: async (user) => {
-        if (user.password) {
-          user.password = await bcrypt.hash(user.password, 10);
-        }
-      },
-      beforeUpdate: async (user) => {
-        if (user.changed('password')) {
-          user.password = await bcrypt.hash(user.password, 10);
-        }
-      }
-    }
-  });
-  
-  // Add methods to the User model if it's a real model
-  if (User.prototype) {
-    // Add mock methods that might be missing
-    User.prototype.comparePassword = async function(candidatePassword) {
-      return bcrypt.compare(candidatePassword, this.password);
-    };
-
-    User.prototype.generatePasswordResetToken = function() {
-      // Use simple mock for test since we don't have crypto
-      const token = Array.from({length: 32}, () => Math.floor(Math.random() * 16).toString(16)).join('');
-      this.passwordResetToken = token;
-      this.passwordResetExpires = new Date(Date.now() + 3600000); // 1 hour
-      return token;
-    };
-
-    User.prototype.updateLastLogin = async function() {
-      this.lastLoginAt = new Date();
-      await this.save();
-    };
+// Initialize all models with test connection
+Object.values(models).forEach(model => {
+  if (typeof model.init === 'function' && model.attributes) {
+    model.init(model.attributes, {
+      sequelize: testSequelize,
+      modelName: model.name,
+      tableName: model.tableName || model.name.toLowerCase() + 's',
+      hooks: model.hooks // Register hooks for test DB
+    });
   }
-}
+});
 
-// Associate models if needed
-// User.associate({ User });
+// Set up associations
+Object.values(models).forEach(model => {
+  if (typeof model.associate === 'function') {
+    model.associate(models);
+  }
+});
 
 // Global test setup
 beforeAll(async () => {
@@ -86,13 +53,7 @@ beforeAll(async () => {
 // Global test teardown
 afterAll(async () => {
   try {
-    // Close database connection
-    if (testSequelize.close) {
-      await testSequelize.close();
-      console.log('Test database connection closed');
-    }
-    
-    // Close Express server if it exists
+    // Close Express server if it exists first
     try {
       const app = require('./app');
       if (app && typeof app.closeServer === 'function') {
@@ -102,115 +63,99 @@ afterAll(async () => {
     } catch (serverError) {
       console.warn('Could not close server:', serverError.message);
     }
-    
+
+    // Close database connection - only if it's open
+    if (testSequelize && !testSequelize.closed) {
+      try {
+        if (testSequelize.connectionManager) {
+          await testSequelize.connectionManager.close();
+        }
+        await testSequelize.close();
+        testSequelize.closed = true;
+        console.log('Test database connection closed');
+      } catch (dbError) {
+        if (dbError.code !== 'SQLITE_MISUSE') {
+          console.error('Error closing database:', dbError);
+        }
+      }
+    }
+
     // Debug open handles that might prevent Jest from exiting
-    console.log('Open handles after cleanup:');
-    console.log('Active handles:', process._getActiveHandles().length);
-    console.log('Active requests:', process._getActiveRequests().length);
+    const handles = process._getActiveHandles();
+    const requests = process._getActiveRequests();
+    
+    if (handles.length > 0 || requests.length > 0) {
+      console.log('\nWarning: Found open handles/requests after cleanup:');
+      console.log('Active handles:', handles.length);
+      handles.forEach((h, i) => {
+        if (h && h.constructor) {
+          console.log(`[Handle ${i}]:`, h.constructor.name);
+          // Extra logging for known handle types
+          if (h.constructor.name === 'Socket') {
+            if (h.remoteAddress || h.localAddress) {
+              console.log(`[Handle ${i}] Socket details:`, {
+                localAddress: h.localAddress,
+                localPort: h.localPort,
+                remoteAddress: h.remoteAddress,
+                remotePort: h.remotePort,
+                destroyed: h.destroyed,
+                writable: h.writable,
+                readable: h.readable
+              });
+            }
+            if (h._handle && h._handle.getAsyncId) {
+              console.log(`[Handle ${i}] Socket asyncId:`, h._handle.getAsyncId());
+            }
+            if (typeof h.destroy === 'function') {
+              h.destroy();
+            }
+          }
+          if (h.constructor.name === 'Server') {
+            if (h.address) {
+              console.log(`[Handle ${i}] Server address:`, h.address());
+            }
+            if (typeof h.close === 'function') {
+              h.close();
+            }
+          }
+          if (h.constructor.name === 'WriteStream') {
+            console.log(`[Handle ${i}] WriteStream path:`, h.path);
+          }
+          if (h.constructor.name === 'ChildProcess') {
+            console.log(`[Handle ${i}] ChildProcess pid:`, h.pid);
+            if (typeof h.kill === 'function') {
+              h.kill();
+            }
+          }
+        }
+        // Print stack trace if available
+        if (h && h.stack) {
+          console.log(`[Handle ${i}] Stack:`, h.stack);
+        }
+      });
+      
+      console.log('Active requests:', requests.length);
+      requests.forEach((r, i) => {
+        if (r && r.constructor) {
+          console.log(`[Request ${i}]:`, r.constructor.name);
+        }
+      });
+    }
   } catch (error) {
     console.error('Error during test teardown:', error);
   }
-});
+}, 10000); // Add 10 second timeout for cleanup
 
 // Helper to create test user
 async function createTestUser(role = 'user') {
-  // Handle both real and mock User models
-  try {
-    // Create a hardcoded mock user for tests
-    const mockUser = {
-      userId: 1,
-      email: `test-${Date.now()}@example.com`,
-      firstName: 'Test',
-      lastName: 'User',
-      role: role,
-      password: '$2a$10$XXXXXXXXXXXXXXXXXXXXXXXX',
-      passwordResetToken: 'test-token',
-      passwordResetExpires: new Date(Date.now() + 3600000),
-      lastLoginAt: new Date(),
-      comparePassword: function(password) {
-        return Promise.resolve(password !== 'wrongpassword');
-      },
-      generatePasswordResetToken: function() {
-        this.passwordResetToken = 'test-token';
-        this.passwordResetExpires = new Date(Date.now() + 3600000);
-        return 'test-token';
-      },
-      updateLastLogin: function() {
-        this.lastLoginAt = new Date();
-        return Promise.resolve(this);
-      },
-      update: function(data) {
-        Object.assign(this, data);
-        return Promise.resolve(this);
-      },
-      save: function() {
-        return Promise.resolve(this);
-      },
-      destroy: function() {
-        return Promise.resolve(true);
-      },
-      toJSON: function() {
-        return {
-          userId: this.userId,
-          email: this.email,
-          firstName: this.firstName,
-          lastName: this.lastName,
-          role: this.role,
-          lastLoginAt: this.lastLoginAt,
-          passwordResetToken: this.passwordResetToken,
-          passwordResetExpires: this.passwordResetExpires
-        };
-      }
-    };
-    
-    // If we're in a real environment, try to use the real model
-    if (process.env.NODE_ENV !== 'test' && User.create && typeof User.create === 'function') {
-      console.log('Using real User.create');
-      return User.create({
-        email: `test-${Date.now()}@example.com`,
-        password: 'password123',
-        firstName: 'Test',
-        lastName: 'User',
-        role
-      });
-    }
-    
-    // Otherwise use the mock
-    console.log('Using mock User');
-    return mockUser;
-  } catch (error) {
-    console.error('Error in createTestUser:', error);
-    // Return a simple mock object if everything else fails
-    return {
-      userId: 1,
-      email: `test-${Date.now()}@example.com`,
-      firstName: 'Test',
-      lastName: 'User',
-      role: role,
-      comparePassword: () => Promise.resolve(true),
-      generatePasswordResetToken: function() {
-        this.passwordResetToken = 'test-token';
-        this.passwordResetExpires = new Date(Date.now() + 3600000);
-        return 'test-token';
-      },
-      updateLastLogin: function() {
-        this.lastLoginAt = new Date();
-        return Promise.resolve(this);
-      },
-      save: function() {
-        return Promise.resolve(this);
-      },
-      toJSON: function() {
-        return {
-          userId: 1,
-          email: this.email,
-          firstName: 'Test',
-          lastName: 'User',
-          role: role
-        };
-      }
-    };
-  }
+  const { User } = models;
+  return User.create({
+    email: `test-${Date.now()}@example.com`,
+    password: 'password123',
+    firstName: 'Test',
+    lastName: 'User',
+    role
+  });
 }
 
 // Helper to create test token
@@ -224,17 +169,7 @@ function generateTestToken(user) {
 
 // Helper to create test vendor
 async function createTestVendor() {
-  const { Vendor } = require('../models');
-  if (typeof Vendor.create !== 'function') {
-    return {
-      vendorId: 1,
-      vendorName: `Test Vendor ${Date.now()}`,
-      vendorCode: `TV${Date.now()}`,
-      website: 'https://example.com',
-      contactEmail: 'contact@example.com'
-    };
-  }
-  
+  const { Vendor } = models;
   return Vendor.create({
     vendorName: `Test Vendor ${Date.now()}`,
     vendorCode: `TV${Date.now()}`,
@@ -245,17 +180,7 @@ async function createTestVendor() {
 
 // Helper to create test brand
 async function createTestBrand(vendorId) {
-  const { VendorBrand } = require('../models');
-  if (typeof VendorBrand.create !== 'function') {
-    return {
-      brandId: 1,
-      vendorId,
-      brandName: `Test Brand ${Date.now()}`,
-      brandCode: `TB${Date.now()}`,
-      website: 'https://brand.example.com'
-    };
-  }
-  
+  const { VendorBrand } = models;
   return VendorBrand.create({
     vendorId,
     brandName: `Test Brand ${Date.now()}`,

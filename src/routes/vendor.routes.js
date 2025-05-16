@@ -9,6 +9,12 @@ router.post('/', vendorController.createVendor);
 router.put('/:id', vendorController.updateVendor);
 router.delete('/:id', vendorController.deleteVendor);
 
+// Vendor brand routes
+router.get('/:vendorId/brands', vendorController.getVendorBrands);
+router.post('/brands', vendorController.createVendorBrand);
+router.put('/brands/:id', vendorController.updateVendorBrand);
+router.delete('/brands/:id', vendorController.deleteVendorBrand);
+
 // Vendor product routes
 router.get('/:vendorId/products', vendorController.getVendorProducts);
 router.post('/products', vendorController.createVendorProduct);

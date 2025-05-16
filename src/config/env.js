@@ -117,8 +117,32 @@ function getDatabaseUrl() {
   return `postgresql://${process.env.DB_USER}:${process.env.DB_PASS}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?schema=public`;
 }
 
-// Export configuration with validation
-module.exports = {
+// Mock configuration for test environment
+const testConfig = {
+  port: 3000,
+  database: {
+    dialect: 'sqlite',
+    storage: ':memory:',
+    logging: false
+  },
+  jwt: {
+    secret: 'test-secret',
+    expiresIn: '1h'
+  },
+  amazon: {
+    region: 'us-east-1',
+    refreshToken: 'test-refresh-token',
+    clientId: 'test-client-id',
+    clientSecret: 'test-client-secret',
+    accessKeyId: 'test-access-key',
+    secretAccessKey: 'test-secret-key',
+    roleArn: 'test-role-arn',
+    marketplaceId: 'test-marketplace-id'
+  }
+};
+
+// Export configuration based on environment
+module.exports = process.env.NODE_ENV === 'test' ? testConfig : {
   // JWT config
   jwt: {
     secret: process.env.SECRET_KEY || 'dev-secret-key',

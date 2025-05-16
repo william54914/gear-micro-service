@@ -15,7 +15,7 @@ module.exports = {
     '../controllers/import.controller': '<rootDir>/src/tests/mocks/controllers/import.controller.js',
     '@azure/msal-node': '<rootDir>/src/tests/mocks/@azure/msal-node.js',
     'ssh2-sftp-client': '<rootDir>/src/tests/mocks/ssh2-sftp-client.js',
-    '../../models': '<rootDir>/src/tests/mocks/models.js',
+    '^models$': '<rootDir>/src/tests/mocks/models.js',
     '../models': '<rootDir>/src/tests/mocks/models.js',
     '../setup': '<rootDir>/src/tests/setup.js'
   },

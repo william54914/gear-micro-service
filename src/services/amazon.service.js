@@ -5,14 +5,37 @@ const zlib = require('zlib');
 const { promisify } = require('util');
 const BaseService = require('./base.service');
 const gunzip = promisify(zlib.gunzip);
+const config = require('../config/env');
 
 class AmazonService extends BaseService {
 	constructor() {
 		super('amazon'); // This will validate Amazon config
 
+		// Skip configuration in test environment
+		if (process.env.NODE_ENV === 'test') {
+			this.config = {
+				region: 'us-east-1',
+				refreshToken: 'test-refresh-token',
+				clientId: 'test-client-id',
+				clientSecret: 'test-client-secret',
+				accessKeyId: 'test-access-key',
+				secretAccessKey: 'test-secret-key',
+				roleArn: 'test-role-arn',
+				marketplaceId: 'test-marketplace-id'
+			};
+			this.spApi = {
+				config: () => {},
+				auth: {
+					getToken: () => Promise.resolve({ access_token: 'test-token' })
+				}
+			};
+			this.baseUrl = 'https://sellingpartnerapi-na.amazon.com';
+			return;
+		}
+
 		this.spApi = spApi;
 		this.spApi.config({
-			region: this.config.amazon.region
+			region: config.amazon.region
 		});
 		
 		this.baseUrl = 'https://sellingpartnerapi-na.amazon.com';

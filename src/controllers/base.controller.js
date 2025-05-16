@@ -42,10 +42,8 @@ class BaseController {
   sendError(res, message, status = 500, details = null) {
     const response = {
       success: false,
-      error: {
-        message,
-        ...(details && { details })
-      }
+      error: message,
+      ...(details && { details })
     };
 
     res.status(status).json(response);
@@ -57,15 +55,42 @@ class BaseController {
    */
   asyncHandler(fn) {
     return (req, res, next) => {
-      Promise.resolve(fn(req, res, next)).catch(error => {
-        console.error('Route error:', error);
-        this.sendError(
-          res,
-          error.message || 'Internal server error',
-          error.status || 500,
-          process.env.NODE_ENV === 'development' ? error : null
-        );
-      });
+      Promise.resolve(fn(req, res, next))
+        .catch(error => {
+          if (error.name === 'SequelizeValidationError') {
+            return this.sendError(res, 'Validation error', 400, {
+              details: error.errors.map(err => ({
+                message: err.message,
+                field: err.path
+              }))
+            });
+          }
+          if (error.name === 'SequelizeUniqueConstraintError') {
+            return this.sendError(res, 'Duplicate entry', 400, {
+              details: error.errors.map(err => ({
+                message: err.message,
+                field: err.path
+              }))
+            });
+          }
+          if (error.name === 'SequelizeForeignKeyConstraintError') {
+            return this.sendError(res, 'Invalid reference', 400, {
+              details: [{
+                message: 'Referenced record does not exist',
+                field: error.fields[0]
+              }]
+            });
+          }
+          
+          // Log unexpected errors
+          console.error('Route error:', error);
+          return this.sendError(
+            res,
+            'Internal server error',
+            500,
+            process.env.NODE_ENV === 'development' ? error : null
+          );
+        });
     };
   }
 

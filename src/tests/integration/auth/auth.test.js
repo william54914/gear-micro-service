@@ -1,6 +1,6 @@
 const request = require('supertest');
 const app = require('../../app');
-const { User } = require('../../models');
+const { User } = require('models');
 const { createTestUser, generateTestToken } = require('../../setup');
 
 describe('Authentication', () => {
@@ -36,7 +36,7 @@ describe('Authentication', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.message).toContain('email already exists');
+      expect(res.body.error).toContain('email already exists');
     });
 
     it('should validate required fields', async () => {
@@ -46,7 +46,7 @@ describe('Authentication', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.details).toHaveLength(4); // email, password, firstName, lastName
+      expect(res.body.details).toHaveLength(4); // email, password, firstName, lastName
     });
   });
 
@@ -79,7 +79,7 @@ describe('Authentication', () => {
 
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.message).toBe('Invalid email or password');
+      expect(res.body.error).toBe('Invalid email or password');
     });
 
     it('should not login with non-existent email', async () => {
@@ -92,7 +92,7 @@ describe('Authentication', () => {
 
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.message).toBe('Invalid email or password');
+      expect(res.body.error).toBe('Invalid email or password');
     });
   });
 
@@ -155,7 +155,7 @@ describe('Authentication', () => {
 
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.message).toBe('No token provided');
+      expect(res.body.error).toBe('No token provided');
     });
 
     it('should not access protected route with invalid token', async () => {
@@ -165,7 +165,7 @@ describe('Authentication', () => {
 
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.message).toBe('Invalid token');
+      expect(res.body.error).toBe('Invalid token');
     });
 
     it('should not access admin route with user role', async () => {
@@ -178,7 +178,7 @@ describe('Authentication', () => {
 
       expect(res.status).toBe(403);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.message).toBe('Insufficient permissions');
+      expect(res.body.error).toBe('Insufficient permissions');
     });
   });
 }); 

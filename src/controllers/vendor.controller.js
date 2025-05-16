@@ -29,11 +29,15 @@ class VendorController extends BaseController {
    * Get a single vendor by ID
    */
   getVendor = [
-    this.validate(Joi.object({ id: Joi.number().required() }), 'params'),
+    this.validate(Joi.object({ vendorId: Joi.number().required() }), 'params'),
     this.asyncHandler(async (req, res) => {
-      const vendor = await Vendor.findByIdOrFail(req.params.id, {
+      const vendor = await Vendor.findByPk(req.params.vendorId, {
         include: ['brands', 'distributorInfo']
       });
+
+      if (!vendor) {
+        return this.sendError(res, 'Vendor not found', 404);
+      }
 
       this.sendSuccess(res, vendor);
     })
@@ -54,10 +58,13 @@ class VendorController extends BaseController {
    * Update a vendor
    */
   updateVendor = [
-    this.validate(Joi.object({ id: Joi.number().required() }), 'params'),
+    this.validate(Joi.object({ vendorId: Joi.number().required() }), 'params'),
     this.validate(schemas.vendor, 'body'),
     this.asyncHandler(async (req, res) => {
-      const vendor = await Vendor.findByIdOrFail(req.params.id);
+      const vendor = await Vendor.findByPk(req.params.vendorId);
+      if (!vendor) {
+        return this.sendError(res, 'Vendor not found', 404);
+      }
       await vendor.update(req.body);
       this.sendSuccess(res, vendor, 'Vendor updated successfully');
     })
@@ -67,11 +74,72 @@ class VendorController extends BaseController {
    * Delete a vendor
    */
   deleteVendor = [
-    this.validate(Joi.object({ id: Joi.number().required() }), 'params'),
+    this.validate(Joi.object({ vendorId: Joi.number().required() }), 'params'),
     this.asyncHandler(async (req, res) => {
-      const vendor = await Vendor.findByIdOrFail(req.params.id);
+      const vendor = await Vendor.findByPk(req.params.vendorId);
+      if (!vendor) {
+        return this.sendError(res, 'Vendor not found', 404);
+      }
       await vendor.destroy();
       this.sendSuccess(res, null, 'Vendor deleted successfully');
+    })
+  ];
+
+  /**
+   * Get vendor brands
+   */
+  getVendorBrands = [
+    this.validate(Joi.object({ vendorId: Joi.number().required() }), 'params'),
+    this.validate(schemas.query, 'query'),
+    this.asyncHandler(async (req, res) => {
+      const brands = await VendorBrand.paginate({
+        ...req.query,
+        where: { vendorId: req.params.vendorId }
+      });
+
+      this.sendSuccess(res, brands);
+    })
+  ];
+
+  /**
+   * Create vendor brand
+   */
+  createVendorBrand = [
+    this.validate(schemas.vendorBrand, 'body'),
+    this.asyncHandler(async (req, res) => {
+      const brand = await VendorBrand.create(req.body);
+      this.sendSuccess(res, brand, 'Brand created successfully');
+    })
+  ];
+
+  /**
+   * Update vendor brand
+   */
+  updateVendorBrand = [
+    this.validate(Joi.object({ id: Joi.number().required() }), 'params'),
+    this.validate(schemas.vendorBrand, 'body'),
+    this.asyncHandler(async (req, res) => {
+      const brand = await VendorBrand.findByPk(req.params.id);
+      if (!brand) {
+        return this.sendError(res, 'Brand not found', 404);
+      }
+      await brand.update(req.body);
+      this.sendSuccess(res, brand, 'Brand updated successfully');
+    })
+  ];
+
+  /**
+   * Delete vendor brand
+   */
+  deleteVendorBrand = [
+    this.validate(Joi.object({ id: Joi.number().required() }), 'params'),
+    this.asyncHandler(async (req, res) => {
+      const brand = await VendorBrand.findByPk(req.params.id);
+      if (!brand) {
+        return this.sendError(res, 'Brand not found', 404);
+      }
+      await brand.destroy();
+      this.sendSuccess(res, null, 'Brand deleted successfully');
     })
   ];
 
@@ -113,10 +181,13 @@ class VendorController extends BaseController {
    * Update vendor product
    */
   updateVendorProduct = [
-    this.validate(Joi.object({ id: Joi.number().required() }), 'params'),
+    this.validate(Joi.object({ productId: Joi.number().required() }), 'params'),
     this.validate(schemas.vendorProduct, 'body'),
     this.asyncHandler(async (req, res) => {
-      const product = await VendorProduct.findByIdOrFail(req.params.id);
+      const product = await VendorProduct.findByPk(req.params.productId);
+      if (!product) {
+        return this.sendError(res, 'Product not found', 404);
+      }
       await product.update(req.body);
       
       // Reload with associations
@@ -132,9 +203,12 @@ class VendorController extends BaseController {
    * Delete vendor product
    */
   deleteVendorProduct = [
-    this.validate(Joi.object({ id: Joi.number().required() }), 'params'),
+    this.validate(Joi.object({ productId: Joi.number().required() }), 'params'),
     this.asyncHandler(async (req, res) => {
-      const product = await VendorProduct.findByIdOrFail(req.params.id);
+      const product = await VendorProduct.findByPk(req.params.productId);
+      if (!product) {
+        return this.sendError(res, 'Product not found', 404);
+      }
       await product.destroy();
       this.sendSuccess(res, null, 'Product deleted successfully');
     })

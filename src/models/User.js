@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const BaseModel = require('./base.model');
 const sequelize = require('../config/database');
 
@@ -150,7 +151,8 @@ class User extends BaseModel {
 User.init(User.attributes, {
   sequelize,
   modelName: 'User',
-  tableName: 'users'
+  tableName: 'users',
+  hooks: User.hooks
 });
 
 module.exports = User; 
