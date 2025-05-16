@@ -85,9 +85,30 @@ beforeAll(async () => {
 
 // Global test teardown
 afterAll(async () => {
-  if (testSequelize.close) {
-    await testSequelize.close();
-    console.log('Test database connection closed');
+  try {
+    // Close database connection
+    if (testSequelize.close) {
+      await testSequelize.close();
+      console.log('Test database connection closed');
+    }
+    
+    // Close Express server if it exists
+    try {
+      const app = require('./app');
+      if (app && typeof app.closeServer === 'function') {
+        await app.closeServer();
+        console.log('Test server closed');
+      }
+    } catch (serverError) {
+      console.warn('Could not close server:', serverError.message);
+    }
+    
+    // Debug open handles that might prevent Jest from exiting
+    console.log('Open handles after cleanup:');
+    console.log('Active handles:', process._getActiveHandles().length);
+    console.log('Active requests:', process._getActiveRequests().length);
+  } catch (error) {
+    console.error('Error during test teardown:', error);
   }
 });
 
@@ -250,4 +271,4 @@ module.exports = {
   generateTestToken,
   createTestVendor,
   createTestBrand
-}; 
+};
