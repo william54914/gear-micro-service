@@ -18,6 +18,11 @@ logs/
 # Coverage directory used by tools like istanbul
 coverage/
 
+# Temporary files
+tmp/
+
+# Test output
+test-results/
 
 # Prisma
 prisma/*.db
