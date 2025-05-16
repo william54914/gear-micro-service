@@ -15,13 +15,13 @@ class ImportController {
   /**
    * Import restock products from OneDrive
    * @param {object} options - Import options
-   * @param {string} options.folderPath - OneDrive folder path (default: "inventory management/Restock Products")
+   * @param {string} options.folderPath - OneDrive folder path (default: "My files/Inventory Management/Restock Products")
    * @param {string} options.fileName - File name (default: "restock_products.csv")
    * @returns {Promise<object>} - Import results
    */
   async importRestockFromOneDrive(options = {}) {
     // Default to the nested folder structure
-    const folderPath = options.folderPath || process.env.RESTOCK_FOLDER_PATH || 'inventory management/Restock Products';
+    const folderPath = options.folderPath || process.env.RESTOCK_FOLDER_PATH || 'My files/Inventory Management/Restock Products';
     const fileName = options.fileName || process.env.RESTOCK_FILE || 'restock_products.csv';
     
     try {

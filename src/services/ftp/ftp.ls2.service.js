@@ -36,6 +36,7 @@ class LS2FtpService extends BaseService {
     console.log('FtpService instance:', this.ftpService);
     this.tmpDir = path.join(__dirname, '../../../tmp');
     this.vendorName = "LS2 Helmets";
+    this.inventoryFileName = "FlynCycle Inventory.csv";
     
     // Create tmp directory if it doesn't exist
     if (!fs.existsSync(this.tmpDir)) {
@@ -44,11 +45,13 @@ class LS2FtpService extends BaseService {
   }
 
   async listFiles(remotePath = '.') {
-    return await this.ftpService.listFiles(remotePath);
+    const files = await this.ftpService.listFiles(this.config, remotePath);
+    console.log('All files in FTP:', files);
+    return files;
   }
 
   async downloadFile(remotePath, localPath) {
-    await this.ftpService.downloadFile(remotePath, localPath);
+    await this.ftpService.downloadFile(this.config, remotePath, localPath);
   }
   
   async getLatestPriceFile() {
@@ -129,6 +132,40 @@ class LS2FtpService extends BaseService {
     }
   }
   
+  async getInventoryFile() {
+    try {
+      console.log(`Looking for inventory file: ${this.inventoryFileName}`);
+      const files = await this.listFiles();
+      
+      // Find the inventory file
+      const inventoryFile = files.find(file => file.name === this.inventoryFileName);
+      
+      if (!inventoryFile) {
+        console.log('Inventory file not found. Available files:', files.map(f => f.name));
+        return null;
+      }
+      
+      console.log('Found inventory file:', inventoryFile);
+      
+      // Create a timestamp for the local file
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const localFilename = `ls2_inventory_${timestamp}.csv`;
+      const localPath = path.join(this.tmpDir, localFilename);
+      
+      // Download the file
+      await this.downloadFile(inventoryFile.name, localPath);
+      
+      return {
+        path: localPath,
+        name: inventoryFile.name,
+        originalDate: inventoryFile.date
+      };
+    } catch (error) {
+      console.error('Error getting inventory file from LS2:', error);
+      throw error;
+    }
+  }
+  
   // Process an LS2 file for import into database tables
   async importFile(filename) {
     try {
@@ -158,7 +195,7 @@ class LS2FtpService extends BaseService {
       console.log('Vendor:', vendor.toJSON());
 
       // Start a transaction
-      const transaction = await models.sequelize.startUnmanagedTransaction();
+      const transaction = await models.sequelize.transaction();
       console.log('Transaction started');
       
       try {
@@ -208,9 +245,10 @@ class LS2FtpService extends BaseService {
               if (!currentBrands.has('LS2')) {
                   currentBrands.add('LS2');
                   brandRecords.push({
-                      brand_name: 'LS2',
-                      brand_alt_1: 'LS2 Helmets',
-                      vendor_id: vendor.vendor_id
+                      brandName: 'LS2',
+                      brandCode: 'LS2',
+                      brandAlt1: 'LS2 Helmets',
+                      vendorId: vendor.vendorId
                   });
               }
 
@@ -218,27 +256,28 @@ class LS2FtpService extends BaseService {
               if (data.PartNumber) {
                 currentProducts.add(data.PartNumber);
                 productRecords.push({
-                  item_id: data.PartNumber,
-                  brand_name: 'LS2',
-                  product_type: data.TYPE || null,
-                  mfg_part: data.PartNumber,
+                  itemId: data.PartNumber,
+                  brandName: 'LS2',
+                  productType: data.TYPE || null,
+                  mfgPart: data.PartNumber,
                   title: data['Item Description'] || null,
                   upc: data['EAN/UPC'] || null,
-                  description_1: data['Item Description'] || null,
+                  description1: data['Item Description'] || null,
                   discontinued: data['Is Discontinued']?.toUpperCase() === 'T',
-                  vendor_id: vendor.vendor_id
+                  vendorId: vendor.vendorId
                 });
 
                 // Process distributor info
                 distributorRecords.push({
-                  distributor_part: data.PartNumber,
-                  manufacturer_part: data.PartNumber,
+                  distributorPart: data.PartNumber,
+                  manufacturerPart: data.PartNumber,
+                  vendorId: vendor.vendorId,
                   cost: parseFloat(data['Dealer Cost'] || '0'),
-                  inventory_east: parseInt(data['In Stock'] || '0', 10),
-                  inventory_midwest: 0,
-                  inventory_west: 0,
-                  total_inventory: parseInt(data['In Stock'] || '0', 10),
-                  shipping_cost: 0
+                  inventoryEast: parseInt(data['In Stock'] || '0', 10),
+                  inventoryMidwest: 0,
+                  inventoryWest: 0,
+                  totalInventory: parseInt(data['In Stock'] || '0', 10),
+                  shippingCost: 0
                 });
               }
             })
@@ -256,38 +295,39 @@ class LS2FtpService extends BaseService {
                 // Process brands
                 console.log('Processing brands...');
                 const existingBrands = await models.VendorBrand.findAll({
-                  where: { vendor_id: vendor.vendor_id },
+                  where: { vendorId: vendor.vendorId },
                   transaction
                 });
                 console.log(`Found existing brands: ${existingBrands.length}`);
 
                 // Create a map for quick lookup
-                const brandMap = new Map(existingBrands.map(b => [b.brand_name, b]));
+                const brandMap = new Map(existingBrands.map(b => [b.brandName, b]));
+                let ls2Brand;
 
                 // Process each brand record
                 for (const brandRecord of brandRecords) {
-                  if (brandMap.has(brandRecord.brand_name)) {
+                  if (brandMap.has(brandRecord.brandName)) {
                     // Update existing brand
                     await models.VendorBrand.update(
                       {
-                        brand_alt_1: brandRecord.brand_alt_1,
-                        brand_alt_2: brandRecord.brand_alt_2,
+                        brandAlt1: brandRecord.brandAlt1,
                         active: true,
-                        updated_at: new Date()
+                        updatedAt: new Date()
                       },
                       {
-                        where: { brand_id: brandMap.get(brandRecord.brand_name).brand_id },
+                        where: { brandId: brandMap.get(brandRecord.brandName).brandId },
                         transaction
                       }
                     );
+                    ls2Brand = brandMap.get(brandRecord.brandName);
                     results.brands.updated++;
                   } else {
                     // Create new brand
-                    const newBrand = await models.VendorBrand.create({
+                    ls2Brand = await models.VendorBrand.create({
                       ...brandRecord,
                       active: true,
-                      created_at: new Date(),
-                      updated_at: new Date()
+                      createdAt: new Date(),
+                      updatedAt: new Date()
                     }, { transaction });
                     results.brands.created++;
                   }
@@ -296,25 +336,30 @@ class LS2FtpService extends BaseService {
                 // Process products
                 console.log('Processing products...');
                 const existingProducts = await models.VendorProduct.findAll({
-                  where: { vendor_id: vendor.vendor_id },
+                  where: { vendorId: vendor.vendorId },
                   transaction
                 });
 
                 // Create a map for quick lookup
-                const productMap = new Map(existingProducts.map(p => [p.item_id, p]));
+                const productMap = new Map(existingProducts.map(p => [p.itemId, p]));
 
                 // Process each product record
                 for (const productRecord of productRecords) {
-                  if (productMap.has(productRecord.item_id)) {
+                  const productData = {
+                    ...productRecord,
+                    brandId: ls2Brand.brandId,
+                    vendorSku: productRecord.itemId,
+                    vendorProductName: productRecord.title || `LS2 Product ${productRecord.itemId}`,
+                    active: true,
+                    updatedAt: new Date()
+                  };
+
+                  if (productMap.has(productRecord.itemId)) {
                     // Update existing product
                     await models.VendorProduct.update(
+                      productData,
                       {
-                        ...productRecord,
-                        active: true,
-                        updated_at: new Date()
-                      },
-                      {
-                        where: { product_id: productMap.get(productRecord.item_id).product_id },
+                        where: { productId: productMap.get(productRecord.itemId).productId },
                         transaction
                       }
                     );
@@ -322,10 +367,8 @@ class LS2FtpService extends BaseService {
                   } else {
                     // Create new product
                     const newProduct = await models.VendorProduct.create({
-                      ...productRecord,
-                      active: true,
-                      created_at: new Date(),
-                      updated_at: new Date()
+                      ...productData,
+                      createdAt: new Date()
                     }, { transaction });
                     results.products.created++;
                   }
@@ -335,7 +378,7 @@ class LS2FtpService extends BaseService {
                 console.log('Processing distributor info...');
                 for (const distributorRecord of distributorRecords) {
                   const existingDistInfo = await models.VendorDistributorInfo.findOne({
-                    where: { manufacturer_part: distributorRecord.manufacturer_part },
+                    where: { manufacturerPart: distributorRecord.manufacturerPart },
                     transaction
                   });
 
@@ -345,10 +388,10 @@ class LS2FtpService extends BaseService {
                       {
                         ...distributorRecord,
                         active: true,
-                        updated_at: new Date()
+                        updatedAt: new Date()
                       },
                       {
-                        where: { distributor_info_id: existingDistInfo.distributor_info_id },
+                        where: { distributorInfoId: existingDistInfo.distributorInfoId },
                         transaction
                       }
                     );
@@ -358,15 +401,17 @@ class LS2FtpService extends BaseService {
                     await models.VendorDistributorInfo.create({
                       ...distributorRecord,
                       active: true,
-                      created_at: new Date(),
-                      updated_at: new Date()
+                      createdAt: new Date(),
+                      updatedAt: new Date()
                     }, { transaction });
                     results.distributor_info.created++;
                   }
                 }
 
                 await transaction.commit();
-                resolve(results);
+                console.log('Transaction committed successfully');
+                console.log('Import results:', results);
+                return results;
               } catch (error) {
                 console.error('Error processing CSV data:', error);
                 await transaction.rollback();
@@ -402,13 +447,14 @@ class LS2FtpService extends BaseService {
   async getOrCreateVendor() {
     // First try to find by exact name match
     let vendor = await models.Vendor.findOne({ 
-      where: { vendor_name: 'LS2' }
+      where: { vendorName: 'LS2' }
     });
     
     if (!vendor) {
       // If not found, create new
       vendor = await models.Vendor.create({
-        vendor_name: 'LS2',
+        vendorName: 'LS2',
+        vendorCode: 'LS2',
         active: true,
         created_at: new Date(),
         updated_at: new Date()
@@ -423,32 +469,45 @@ class LS2FtpService extends BaseService {
     try {
       const files = await this.listFiles();
       console.log(`Found ${files.length} LS2 files to import`);
+      console.log('Files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
       
       const results = [];
       
       for (const file of files) {
-        if (file.type === 1) { // Type 1 is typically a file (not a directory)
-          try {
-            const result = await this.importFile(file.name);
-            results.push({
-              file: file.name,
-              success: true,
-              result
-            });
-          } catch (error) {
-            results.push({
-              file: file.name,
-              success: false,
-              error: error.message
-            });
+        if (file.type === 'file' || file.type === 1) { // Check for both 'file' string and type 1
+          if (file.name.toLowerCase().endsWith('.csv')) { // Only process CSV files
+            console.log(`Processing file: ${file.name}`);
+            try {
+              console.log(`Attempting to import file: ${file.name}`);
+              const result = await this.importFile(file.name);
+              console.log(`Import result for ${file.name}:`, result);
+              results.push({
+                file: file.name,
+                success: true,
+                result
+              });
+            } catch (error) {
+              console.error(`Error importing file ${file.name}:`, error);
+              results.push({
+                file: file.name,
+                success: false,
+                error: error.message
+              });
+            }
+          } else {
+            console.log(`Skipping non-CSV file: ${file.name}`);
           }
+        } else {
+          console.log(`Skipping non-file: ${file.name} (type: ${file.type})`);
         }
       }
       
-      return {
-        totalFiles: files.filter(f => f.type === 1).length,
+      const processedResults = {
+        totalFiles: files.filter(f => (f.type === 'file' || f.type === 1) && f.name.toLowerCase().endsWith('.csv')).length,
         processed: results
       };
+      console.log('Final import results:', processedResults);
+      return processedResults;
     } catch (error) {
       console.error('Error importing all LS2 files:', error);
       throw error;

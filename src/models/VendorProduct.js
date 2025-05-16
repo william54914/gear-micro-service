@@ -39,8 +39,12 @@ class VendorProduct extends BaseModel {
       },
       mfgPart: {
         type: DataTypes.STRING,
-        allowNull: true,
-        field: 'mfg_part'
+        allowNull: false,
+        field: 'mfg_part',
+        unique: true,
+        validate: {
+          notEmpty: true
+        }
       },
       vendorProductName: {
         type: DataTypes.STRING,

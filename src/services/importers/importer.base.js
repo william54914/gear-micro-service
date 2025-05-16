@@ -18,18 +18,44 @@ class BaseImporter {
    * @returns {Promise<Array>} - Array of parsed records
    */
   async parseCSV(csvContent) {
+    if (!csvContent || typeof csvContent !== 'string') {
+      throw new Error('Invalid CSV content: content must be a non-empty string');
+    }
+
     return new Promise((resolve, reject) => {
       const results = [];
       const readableStream = new Readable();
       readableStream._read = () => {};
-      readableStream.push(csvContent);
+
+      // Remove any BOM and normalize line endings
+      const cleanContent = csvContent.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+      readableStream.push(cleanContent);
       readableStream.push(null);
 
+      console.log('\nParsing CSV with csv-parser...');
+      console.log('CSV content type:', typeof cleanContent);
+      console.log('CSV content length:', cleanContent.length);
+      console.log('First few lines:', cleanContent.split('\n').slice(0, 5));
+
       readableStream
-        .pipe(csv())
-        .on('data', (data) => results.push(data))
-        .on('end', () => resolve(results))
-        .on('error', (error) => reject(error));
+        .pipe(csv({
+          strict: true,
+          trim: true,
+          skipLines: 0,
+          mapHeaders: ({ header }) => header.trim()
+        }))
+        .on('data', (data) => {
+          console.log('Parsed row:', data);
+          results.push(data);
+        })
+        .on('end', () => {
+          console.log(`Finished parsing CSV. Found ${results.length} records.`);
+          resolve(results);
+        })
+        .on('error', (error) => {
+          console.error('Error parsing CSV:', error);
+          reject(error);
+        });
     });
   }
 

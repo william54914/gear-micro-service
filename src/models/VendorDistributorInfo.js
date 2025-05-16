@@ -103,7 +103,8 @@ VendorDistributorInfo.init(VendorDistributorInfo.attributes, {
   underscored: true,
   timestamps: true,
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  paranoid: false
 });
 
 module.exports = VendorDistributorInfo; 

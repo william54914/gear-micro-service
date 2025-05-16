@@ -122,7 +122,7 @@ class OneDriveService extends BaseService {
         type: item.folder ? 'folder' : 'file',
         id: item.id
       }));
-      return this.success(folders, 'Root folders retrieved successfully');
+      return folders;
     } catch (error) {
       console.error('Failed to list folders:', error.message);
       throw error;
@@ -146,7 +146,7 @@ class OneDriveService extends BaseService {
         modifiedDateTime: item.lastModifiedDateTime,
         type: item.folder ? 'folder' : 'file'
       }));
-      return this.success(files, 'Folder contents retrieved successfully');
+      return files;
     } catch (error) {
       console.error('Failed to list files in folder:', error.message);
       throw error;
@@ -155,32 +155,78 @@ class OneDriveService extends BaseService {
 
   async getFileContent(fileId) {
     try {
+      console.log('\nGetting file content for file ID:', fileId);
+      
       // Get the download URL for the file
       const fileInfo = await this.makeGraphRequest(
         `/users/${this.userEmail}/drive/items/${fileId}`
       );
+      console.log('File info response:', JSON.stringify(fileInfo, null, 2));
+      
+      const downloadUrl = fileInfo['@microsoft.graph.downloadUrl'];
+      if (!downloadUrl) {
+        throw new Error('Download URL not found in file info response');
+      }
+      
+      console.log('Download URL found:', downloadUrl);
       
       // Download the file content
-      const token = await this.getToken();
-      const response = await fetch(fileInfo['@microsoft.graph.downloadUrl'], {
-        method: 'GET',
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
+      const response = await fetch(downloadUrl);
 
-      return response.text();
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+      }
+
+      // Log response headers
+      console.log('Response headers:', Object.fromEntries([...response.headers.entries()]));
+      
+      const content = await response.text();
+      console.log('File content downloaded successfully');
+      console.log('Content length:', content.length);
+      console.log('Content type:', typeof content);
+      console.log('First 500 characters:', content.substring(0, 500));
+      console.log('Content encoding:', response.headers.get('content-encoding'));
+      console.log('Content type:', response.headers.get('content-type'));
+      
+      // Check for common CSV issues
+      const lines = content.split('\n');
+      console.log('Number of lines:', lines.length);
+      console.log('First line (headers):', lines[0]);
+      if (lines.length > 1) {
+        console.log('Second line (first data row):', lines[1]);
+      }
+      
+      // Check for BOM
+      if (content.charCodeAt(0) === 0xFEFF) {
+        console.log('BOM detected at start of file');
+      }
+      
+      // Check for different line endings
+      const crlfCount = (content.match(/\r\n/g) || []).length;
+      const lfCount = (content.match(/[^\r]\n/g) || []).length;
+      console.log('CRLF line endings:', crlfCount);
+      console.log('LF line endings:', lfCount);
+      
+      return content;
     } catch (error) {
-      console.error('Failed to get file content:', error.message);
+      console.error('Failed to get file content:', error);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+      }
       throw error;
     }
   }
 
   async findFolderByPath(folderPath) {
     try {
-      // Split the path into segments
-      const pathSegments = folderPath.split('/').filter(segment => segment);
-      console.log('Looking for path segments:', pathSegments);
+      // Split the path into segments and clean them
+      const pathSegments = folderPath
+        .split('/')
+        .map(segment => segment.trim())
+        .filter(segment => segment);
+      
+      console.log('\nLooking for path segments:', pathSegments);
       
       if (pathSegments.length === 0) {
         // If no segments, return the root folder
@@ -190,34 +236,53 @@ class OneDriveService extends BaseService {
         return { id: rootInfo.id, name: rootInfo.name };
       }
 
-      // Start at the root
+      // Build the path for the Graph API
+      const graphPath = pathSegments.join('/');
+      console.log('Looking for folder at path:', graphPath);
+      
+      try {
+        // Try to get the folder directly by path first
+        const response = await this.makeGraphRequest(
+          `/users/${this.userEmail}/drive/root:/${graphPath}`
+        );
+        
+        if (response && response.id) {
+          console.log('Found folder directly:', response.name);
+          return { id: response.id, name: response.name };
+        }
+      } catch (error) {
+        console.log('Could not find folder directly, falling back to navigation...');
+      }
+
+      // Fall back to navigating the path segment by segment
       let currentFolderId = 'root';
       let currentFolder = null;
 
-      // Navigate through the path segments
       for (const segment of pathSegments) {
-        console.log(`Looking for folder segment: ${segment}`);
-        // Get the items in the current folder
+        console.log(`\nLooking for folder segment: "${segment}"`);
         const endpoint = currentFolderId === 'root'
           ? `/users/${this.userEmail}/drive/root/children`
           : `/users/${this.userEmail}/drive/items/${currentFolderId}/children`;
         
         console.log('Making request to endpoint:', endpoint);
         const response = await this.makeGraphRequest(endpoint);
-        console.log('Found items:', response.value.map(item => ({ name: item.name, type: item.folder ? 'folder' : 'file' })));
         
-        // Find the folder matching the current segment
+        // Find the folder matching the current segment (case-insensitive)
         const folder = response.value.find(
           item => item.name.toLowerCase() === segment.toLowerCase() && item.folder
         );
 
         if (!folder) {
+          console.log('\nAvailable folders in this level:');
+          response.value
+            .filter(item => item.folder)
+            .forEach(item => console.log(`- "${item.name}" (exact name)`));
           throw new Error(`Folder '${segment}' not found in path '${folderPath}'. Available folders: ${response.value.filter(item => item.folder).map(item => item.name).join(', ')}`);
         }
 
         currentFolderId = folder.id;
         currentFolder = folder;
-        console.log(`Found folder: ${folder.name} (${folder.id})`);
+        console.log(`Found folder: "${folder.name}" (${folder.id})`);
       }
 
       return { id: currentFolderId, name: currentFolder.name };
@@ -233,11 +298,20 @@ class OneDriveService extends BaseService {
 
   async findFileInFolder(folderId, fileName) {
     try {
-      const files = await this.listFilesInFolder(folderId);
-      const file = files.find(file => file.name.toLowerCase() === fileName.toLowerCase());
+      const response = await this.makeGraphRequest(
+        `/users/${this.userEmail}/drive/items/${folderId}/children`
+      );
+      console.log('Looking for file:', fileName);
+      console.log('Available files:', response.value.map(f => ({ 
+        name: f.name, 
+        type: f.folder ? 'folder' : 'file',
+        exactName: f.name  // Added for case sensitivity debugging
+      })));
+      
+      const file = response.value.find(file => file.name.toLowerCase() === fileName.toLowerCase() && !file.folder);
       
       if (!file) {
-        throw new Error(`File '${fileName}' not found in folder`);
+        throw new Error(`File '${fileName}' not found in folder. Available files: ${response.value.filter(f => !f.folder).map(f => `"${f.name}"`).join(', ')}`);
       }
 
       return file;

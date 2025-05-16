@@ -1,10 +1,8 @@
-const Client = require('ftp');
+const { Client } = require('basic-ftp');
 const config = require('../../config/env');
 
 class FtpService {
   constructor(ftpConfig = null) {
-    this.client = new Client();
-    
     // If config is provided, validate it has required fields
     if (ftpConfig) {
       this.validateFtpConfig(ftpConfig);
@@ -24,112 +22,145 @@ class FtpService {
     }
   }
 
-  async connect (config) {
+  async connect(config) {
+    const client = new Client();
+    client.ftp.verbose = true; // Enable verbose logging
+    
     try {
-      console.log(config);
-      await this.client.connect(config);
+      console.log('Connecting to FTP with config:', {
+        host: config.host,
+        user: config.user,
+        secure: config.secure
+      });
+      
+      await client.access({
+        host: config.host,
+        user: config.user,
+        password: config.password,
+        secure: config.secure
+      });
+      
       console.log('FTP Connected successfully');
-    } catch (error) {
-      console.error('FTP Connection error:', error);
-      throw error;
+      return client;
+    } catch (err) {
+      console.error('FTP Connection error:', err);
+      throw err;
     }
   }
 
-  async disconnect () {
+  async listFiles(config, remotePath = '.') {
+    let client;
     try {
-      await this.client.end();
-      console.log('FTP Disconnected successfully');
-    } catch (error) {
-      console.error('FTP Disconnection error:', error);
-      throw error;
-    }
-  }
-
-  async uploadFile (config, localPath, remotePath) {
-    try {
-      await this.connect(config);
-      await this.client.put(localPath, remotePath);
-      console.log(`File uploaded successfully: ${ remotePath }`);
-    } catch (error) {
-      console.error('FTP Upload error:', error);
-      throw error;
-    } finally {
-      await this.disconnect();
-    }
-  }
-
-  async downloadFile (config, remotePath, localPath) {
-    try {
-      await this.connect(config);
-      await this.client.get(remotePath, localPath);
-      console.log(`File downloaded successfully: ${ remotePath }`);
-    } catch (error) {
-      console.error('FTP Download error:', error);
-      throw error;
-    } finally {
-      await this.disconnect();
-    }
-  }
-
-  async listFiles (config, remotePath = '.') {
-    try {
-      await this.connect(config);
-      const list = await this.client.list(remotePath);
-      console.log('Raw FTP list result:', list);
-      if (!Array.isArray(list)) {
-        console.error('FTP listFiles: list is not an array:', list);
-        return [];
-      }
-      return list.map(item => ({
+      client = await this.connect(config);
+      console.log('Listing files in directory:', remotePath);
+      
+      const list = await client.list(remotePath);
+      console.log('Raw list response:', list);
+      
+      const files = list.map(item => ({
         name: item.name,
-        type: item.type,
+        type: item.type === 2 ? 'directory' : 'file',
         size: item.size,
-        date: item.date
+        date: new Date(item.date)
       }));
-    } catch (error) {
-      console.error('FTP List error:', error);
-      throw error;
+      
+      console.log('Processed files:', files);
+      return files;
+    } catch (err) {
+      console.error('FTP List error:', err);
+      throw err;
     } finally {
-      await this.disconnect();
+      if (client) {
+        await client.close();
+        console.log('FTP Disconnected successfully');
+      }
     }
   }
 
-  async deleteFile (config, remotePath) {
+  async downloadFile(config, remotePath, localPath) {
+    let client;
     try {
-      await this.connect(config);
-      await this.client.delete(remotePath);
-      console.log(`File deleted successfully: ${ remotePath }`);
-    } catch (error) {
-      console.error('FTP Delete error:', error);
-      throw error;
+      client = await this.connect(config);
+      console.log(`Downloading file: ${remotePath} to ${localPath}`);
+      
+      await client.downloadTo(localPath, remotePath);
+      console.log(`File downloaded successfully: ${remotePath}`);
+    } catch (err) {
+      console.error('FTP Download error:', err);
+      throw err;
     } finally {
-      await this.disconnect();
+      if (client) {
+        await client.close();
+        console.log('FTP Disconnected successfully');
+      }
     }
   }
 
-  async createDirectory (config, remotePath) {
+  async uploadFile(config, localPath, remotePath) {
+    let client;
     try {
-      await this.connect(config);
-      await this.client.mkdir(remotePath);
-      console.log(`Directory created successfully: ${ remotePath }`);
-    } catch (error) {
-      console.error('FTP Create directory error:', error);
-      throw error;
+      client = await this.connect(config);
+      await client.uploadFrom(localPath, remotePath);
+      console.log(`File uploaded successfully: ${remotePath}`);
+    } catch (err) {
+      console.error('FTP Upload error:', err);
+      throw err;
     } finally {
-      await this.disconnect();
+      if (client) {
+        await client.close();
+        console.log('FTP Disconnected successfully');
+      }
     }
   }
 
-  async removeDirectory (config, remotePath) {
+  async deleteFile(config, remotePath) {
+    let client;
     try {
-      await this.connect(config);
-      await this.client.rmdir(remotePath);
-      console.log(`Directory removed successfully: ${ remotePath }`);
-    } catch (error) {
-      console.error('FTP Remove directory error:', error);
-      throw error;
+      client = await this.connect(config);
+      await client.remove(remotePath);
+      console.log(`File deleted successfully: ${remotePath}`);
+    } catch (err) {
+      console.error('FTP Delete error:', err);
+      throw err;
     } finally {
-      await this.disconnect();
+      if (client) {
+        await client.close();
+        console.log('FTP Disconnected successfully');
+      }
+    }
+  }
+
+  async createDirectory(config, remotePath) {
+    let client;
+    try {
+      client = await this.connect(config);
+      await client.ensureDir(remotePath);
+      console.log(`Directory created successfully: ${remotePath}`);
+    } catch (err) {
+      console.error('FTP Create directory error:', err);
+      throw err;
+    } finally {
+      if (client) {
+        await client.close();
+        console.log('FTP Disconnected successfully');
+      }
+    }
+  }
+
+  async removeDirectory(config, remotePath) {
+    let client;
+    try {
+      client = await this.connect(config);
+      await client.removeDir(remotePath);
+      console.log(`Directory removed successfully: ${remotePath}`);
+    } catch (err) {
+      console.error('FTP Remove directory error:', err);
+      throw err;
+    } finally {
+      if (client) {
+        await client.close();
+        console.log('FTP Disconnected successfully');
+      }
     }
   }
 }
