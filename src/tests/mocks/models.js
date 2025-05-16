@@ -12,17 +12,28 @@ class UserModel extends Model {
   }
   
   static findOne() {
-    return Promise.resolve({
+    const mockUser = {
       userId: 1,
       email: 'test@example.com',
       firstName: 'Test',
       lastName: 'User',
       role: 'user',
       password: '$2a$10$XXXXXXXXXXXXXXXXXXXXXXXX',
+      passwordResetToken: 'reset-token',
+      passwordResetExpires: new Date(Date.now() + 3600000),
+      lastLoginAt: new Date(),
       comparePassword: () => Promise.resolve(true),
-      generatePasswordResetToken: () => 'reset-token',
-      update: () => Promise.resolve(this),
-      save: () => Promise.resolve(this),
+      generatePasswordResetToken: () => {
+        mockUser.passwordResetToken = 'reset-token';
+        mockUser.passwordResetExpires = new Date(Date.now() + 3600000);
+        return 'reset-token';
+      },
+      updateLastLogin: () => {
+        mockUser.lastLoginAt = new Date();
+        return Promise.resolve(mockUser);
+      },
+      update: () => Promise.resolve(mockUser),
+      save: () => Promise.resolve(mockUser),
       getFullName: () => 'Test User',
       hasRole: () => true,
       toJSON: () => ({
@@ -30,9 +41,11 @@ class UserModel extends Model {
         email: 'test@example.com',
         firstName: 'Test',
         lastName: 'User',
-        role: 'user'
+        role: 'user',
+        lastLoginAt: new Date()
       })
-    });
+    };
+    return Promise.resolve(mockUser);
   }
   
   static findByPk() {

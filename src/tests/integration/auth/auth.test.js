@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const { User } = require('../../models');
-const { createTestUser } = require('../setup');
+const { createTestUser, generateTestToken } = require('../../setup');
 
 describe('Authentication', () => {
   beforeEach(async () => {
@@ -166,6 +166,19 @@ describe('Authentication', () => {
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
       expect(res.body.error.message).toBe('Invalid token');
+    });
+
+    it('should not access admin route with user role', async () => {
+      const userWithUserRole = await createTestUser('user');
+      const userToken = generateTestToken(userWithUserRole);
+      
+      const res = await request(app)
+        .get('/api/users')
+        .set('Authorization', `Bearer ${userToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.message).toBe('Insufficient permissions');
     });
   });
 }); 
