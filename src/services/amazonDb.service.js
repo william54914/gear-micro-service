@@ -6,10 +6,14 @@ const {
   AmazonZShop 
 } = require('../models');
 const sequelize = require('../config/database');
-const { QueryTypes } = require('@sequelize/core');
+const { QueryTypes } = require('sequelize');
+const config = require('../config/env');
 
 class AmazonDbService {
   constructor() {
+    // Validate database config before using
+    config.database.validate();
+    
     this.batchSize = 1000; // Process records in batches of 1000 instead of 100
   }
 

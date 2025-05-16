@@ -1,53 +1,45 @@
-const { Model, DataTypes } = require('@sequelize/core');
+const { DataTypes } = require('sequelize');
+const BaseModel = require('./base.model');
 const sequelize = require('../config/database');
 
-class AmazonPrice extends Model {}
-
-AmazonPrice.init({
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  sku: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    field: 'seller_sku',
-    comment: 'Amazon Seller SKU (foreign key to AmazonVitals)'
-  },
-  price: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true,
-    comment: 'Current listing price'
-  },
-  bidForFeaturedPlacement: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    field: 'bid_for_featured_placement',
-    comment: 'Bid amount for featured placement'
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'created_at'
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'updated_at'
+class AmazonPrice extends BaseModel {
+  static get attributes() {
+    return {
+      sku: {
+        type: DataTypes.STRING,
+        primaryKey: true,
+        allowNull: false,
+        unique: true
+      },
+      price: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0.00,
+        validate: {
+          min: 0
+        }
+      },
+      bidForFeaturedPlacement: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'bid_for_featured_placement'
+      }
+    };
   }
-}, {
+
+  static associate(models) {
+    this.belongsTo(models.AmazonVitals, {
+      foreignKey: 'sku',
+      targetKey: 'sku'
+    });
+  }
+}
+
+// Initialize the model
+AmazonPrice.init(AmazonPrice.attributes, {
   sequelize,
   modelName: 'AmazonPrice',
-  tableName: 'amazon_price',
-  timestamps: true,
-  underscored: true,
-  indexes: [
-    {
-      fields: ['seller_sku'],
-      unique: true
-    }
-  ]
+  tableName: 'amazon_price'
 });
 
 module.exports = AmazonPrice; 

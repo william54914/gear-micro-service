@@ -1,25 +1,33 @@
-const ftp = require('basic-ftp');
-require('dotenv').config();
+const Client = require('ftp');
+const config = require('../../config/env');
 
 class FtpService {
-  constructor () {
-    this.client = new ftp.Client();
-    this.client.ftp.verbose = true;
+  constructor(ftpConfig = null) {
+    this.client = new Client();
+    
+    // If config is provided, validate it has required fields
+    if (ftpConfig) {
+      this.validateFtpConfig(ftpConfig);
+      this.config = ftpConfig;
+    }
+  }
 
-    // Set default timeout
-    this.client.ftp.timeout = 30000;
+  validateFtpConfig(ftpConfig) {
+    const required = ['host', 'user', 'password'];
+    const missing = required.filter(field => !ftpConfig[field]);
+    if (missing.length > 0) {
+      throw new Error(`Missing required FTP configuration fields: ${missing.join(', ')}`);
+    }
+    
+    if (ftpConfig.port && !Number.isInteger(parseInt(ftpConfig.port))) {
+      throw new Error('FTP port must be a valid number');
+    }
   }
 
   async connect (config) {
     try {
       console.log(config);
-      await this.client.access({
-        host: config.host,
-        port: config.port || 21, // Default to standard FTP port if not specified
-        user: config.user,
-        password: config.password,
-        secure: config.secure || false
-      });
+      await this.client.connect(config);
       console.log('FTP Connected successfully');
     } catch (error) {
       console.error('FTP Connection error:', error);
@@ -29,7 +37,7 @@ class FtpService {
 
   async disconnect () {
     try {
-      await this.client.close();
+      await this.client.end();
       console.log('FTP Disconnected successfully');
     } catch (error) {
       console.error('FTP Disconnection error:', error);
@@ -40,7 +48,7 @@ class FtpService {
   async uploadFile (config, localPath, remotePath) {
     try {
       await this.connect(config);
-      await this.client.uploadFrom(localPath, remotePath);
+      await this.client.put(localPath, remotePath);
       console.log(`File uploaded successfully: ${ remotePath }`);
     } catch (error) {
       console.error('FTP Upload error:', error);
@@ -53,7 +61,7 @@ class FtpService {
   async downloadFile (config, remotePath, localPath) {
     try {
       await this.connect(config);
-      await this.client.downloadTo(localPath, remotePath);
+      await this.client.get(remotePath, localPath);
       console.log(`File downloaded successfully: ${ remotePath }`);
     } catch (error) {
       console.error('FTP Download error:', error);
@@ -84,7 +92,7 @@ class FtpService {
   async deleteFile (config, remotePath) {
     try {
       await this.connect(config);
-      await this.client.remove(remotePath);
+      await this.client.delete(remotePath);
       console.log(`File deleted successfully: ${ remotePath }`);
     } catch (error) {
       console.error('FTP Delete error:', error);
@@ -97,7 +105,7 @@ class FtpService {
   async createDirectory (config, remotePath) {
     try {
       await this.connect(config);
-      await this.client.ensureDir(remotePath);
+      await this.client.mkdir(remotePath);
       console.log(`Directory created successfully: ${ remotePath }`);
     } catch (error) {
       console.error('FTP Create directory error:', error);
@@ -110,7 +118,7 @@ class FtpService {
   async removeDirectory (config, remotePath) {
     try {
       await this.connect(config);
-      await this.client.removeDir(remotePath);
+      await this.client.rmdir(remotePath);
       console.log(`Directory removed successfully: ${ remotePath }`);
     } catch (error) {
       console.error('FTP Remove directory error:', error);

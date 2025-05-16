@@ -3,42 +3,28 @@ const axios = require('axios');
 const qs = require('querystring');
 const zlib = require('zlib');
 const { promisify } = require('util');
+const BaseService = require('./base.service');
 const gunzip = promisify(zlib.gunzip);
 
-class AmazonService {
-	constructor () {
-		this.spApi = spApi;
+class AmazonService extends BaseService {
+	constructor() {
+		super('amazon'); // This will validate Amazon config
 
-		// Configure the SDK
+		this.spApi = spApi;
 		this.spApi.config({
-			region: process.env.AMAZON_REGION || 'us-east-1'
+			region: this.config.amazon.region
 		});
 		
 		this.baseUrl = 'https://sellingpartnerapi-na.amazon.com';
 	}
 
-	async getInventory () {
+	async getInventory() {
 		try {
-			// Debug logging for environment variables
-			console.log('Amazon Auth Debug Info:');
-			console.log('Client ID:', process.env.AMAZON_CLIENT_ID ? 'Set' : 'Not set');
-			console.log('Client Secret:', process.env.AMAZON_CLIENT_SECRET ? 'Set' : 'Not set');
-			console.log('Refresh Token:', process.env.AMAZON_REFRESH_TOKEN ? 'Set' : 'Not set');
-			console.log('AWS Access Key:', process.env.AWS_ACCESS_KEY_ID ? 'Set' : 'Not set');
-			console.log('AWS Secret Key:', process.env.AWS_SECRET_ACCESS_KEY ? 'Set' : 'Not set');
-			console.log('Role ARN:', process.env.AMAZON_ROLE_ARN ? 'Set' : 'Not set');
-			console.log('Region:', process.env.AMAZON_REGION || 'us-east-1');
-
-			// Use the inventory API that's available in the SDK
-			console.log('Making API call to Amazon SP-API for inventory summaries...');
-			
-			// Get LWA token using client credentials and refresh token
 			const accessToken = await this.getAccessToken();
 			
-			// Use the SDK's getInventorySummaries method
 			const response = await this.spApi.getInventorySummaries({
 				query: {
-					marketplaceIds: [ 'ATVPDKIKX0DER' ],  // US marketplace
+					marketplaceIds: ['ATVPDKIKX0DER'],
 					details: true,
 					granularityType: 'Marketplace',
 					granularityId: 'ATVPDKIKX0DER'
@@ -48,10 +34,10 @@ class AmazonService {
 				}
 			});
 
-			return response.data;
+			return this.success(response.data, 'Inventory retrieved successfully');
 		} catch (error) {
 			console.error('Error in AmazonService.getInventory:', error);
-			if (error.data && error.data.errors) {
+			if (error.data?.errors) {
 				console.error('API Error Details:', JSON.stringify(error.data.errors, null, 2));
 			}
 			throw error;
@@ -59,24 +45,48 @@ class AmazonService {
 	}
 
 	async getAccessToken() {
-		// Make a direct request to LWA to get the access token
-		const tokenResponse = await axios.post('https://api.amazon.com/auth/o2/token', qs.stringify({
-			grant_type: 'refresh_token',
-			refresh_token: process.env.AMAZON_REFRESH_TOKEN,
-			client_id: process.env.AMAZON_CLIENT_ID,
-			client_secret: process.env.AMAZON_CLIENT_SECRET
-		}), {
-			headers: {
-				'Content-Type': 'application/x-www-form-urlencoded'
+		try {
+			// Log the raw values for debugging (but mask sensitive parts)
+			console.log('Debug Auth Parameters:');
+			console.log('Client ID:', this.config.amazon.clientId?.slice(0, 6) + '...');
+			console.log('Client Secret:', this.config.amazon.clientSecret?.slice(0, 6) + '...');
+			console.log('Refresh Token Length:', this.config.amazon.refreshToken?.length);
+
+			// Properly encode each parameter individually
+			const params = {
+				grant_type: 'refresh_token',
+				refresh_token: encodeURIComponent(this.config.amazon.refreshToken),
+				client_id: encodeURIComponent(this.config.amazon.clientId),
+				client_secret: encodeURIComponent(this.config.amazon.clientSecret)
+			};
+
+			// Make the request with properly encoded parameters
+			const tokenResponse = await axios.post('https://api.amazon.com/auth/o2/token', 
+				Object.entries(params)
+					.map(([key, value]) => `${key}=${value}`)
+					.join('&'),
+				{
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded'
+					}
+				}
+			);
+
+			if (!tokenResponse.data || !tokenResponse.data.access_token) {
+				console.error('Token response data:', JSON.stringify(tokenResponse.data, null, 2));
+				throw new Error('Failed to get access token from LWA');
 			}
-		});
-		
-		if (!tokenResponse.data || !tokenResponse.data.access_token) {
-			throw new Error('Failed to get access token from LWA');
+
+			console.log('Successfully obtained LWA access token');
+			return tokenResponse.data.access_token;
+		} catch (error) {
+			console.error('Error getting access token:', error.message);
+			if (error.response) {
+				console.error('Response status:', error.response.status);
+				console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+			}
+			throw error;
 		}
-		
-		console.log('Successfully obtained LWA access token');
-		return tokenResponse.data.access_token;
 	}
 
 	async getAllListings() {

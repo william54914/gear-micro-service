@@ -1,58 +1,71 @@
-const { Model, DataTypes } = require('@sequelize/core');
+const { DataTypes } = require('sequelize');
+const BaseModel = require('./base.model');
 const sequelize = require('../config/database');
 
-class AmazonVitals extends Model {}
-
-AmazonVitals.init({
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  sku: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true,
-    field: 'seller_sku',
-    comment: 'Amazon Seller SKU'
-  },
-  fnsku: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: 'Fulfillment Network SKU'
-  },
-  name: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    field: 'item_name',
-    comment: 'Product name'
-  },
-  asin: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: 'Amazon Standard Identification Number'
-  },
-  status: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: 'Listing status (Active, Inactive, etc.)'
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'created_at'
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'updated_at'
+class AmazonVitals extends BaseModel {
+  static get attributes() {
+    return {
+      sku: {
+        type: DataTypes.STRING,
+        primaryKey: true,
+        allowNull: false,
+        unique: true
+      },
+      fnsku: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      name: {
+        type: DataTypes.STRING,
+        allowNull: false
+      },
+      asin: {
+        type: DataTypes.STRING,
+        allowNull: false
+      },
+      status: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: 'Active',
+        validate: {
+          isIn: [['Active', 'Inactive']]
+        }
+      }
+    };
   }
-}, {
+
+  static associate(models) {
+    this.hasOne(models.AmazonInfo, {
+      foreignKey: 'sku',
+      sourceKey: 'sku',
+      as: 'amazonInfo'
+    });
+
+    this.hasOne(models.AmazonPrice, {
+      foreignKey: 'sku',
+      sourceKey: 'sku',
+      as: 'amazonPrice'
+    });
+
+    this.hasOne(models.AmazonQuantity, {
+      foreignKey: 'sku',
+      sourceKey: 'sku',
+      as: 'amazonQuantity'
+    });
+
+    this.hasOne(models.AmazonZShop, {
+      foreignKey: 'sku',
+      sourceKey: 'sku',
+      as: 'amazonZShop'
+    });
+  }
+}
+
+// Initialize the model
+AmazonVitals.init(AmazonVitals.attributes, {
   sequelize,
   modelName: 'AmazonVitals',
-  tableName: 'amazon_vitals',
-  timestamps: true,
-  underscored: true
+  tableName: 'amazon_vitals'
 });
 
 module.exports = AmazonVitals; 

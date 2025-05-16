@@ -1,33 +1,29 @@
 const msal = require('@azure/msal-node');
 const axios = require('axios');
-require('dotenv').config();
+const BaseService = require('./base.service');
 
-class OneDriveClient {
-  constructor () {
-    this.config = {
-      clientId: process.env.ONEDRIVE_CLIENT_ID,
-      clientSecret: process.env.ONEDRIVE_CLIENT_SECRET,
-      tenantId: process.env.ONEDRIVE_TENANT_ID,
-      userEmail: process.env.ONEDRIVE_USER_EMAIL
-    };
+class OneDriveService extends BaseService {
+  constructor() {
+    super('onedrive'); // This will validate OneDrive config
 
     this.msalClient = new msal.ConfidentialClientApplication({
       auth: {
-        clientId: this.config.clientId,
-        authority: `https://login.microsoftonline.com/${this.config.tenantId}`,
-        clientSecret: this.config.clientSecret
+        clientId: this.config.onedrive.clientId,
+        authority: `https://login.microsoftonline.com/${this.config.onedrive.tenantId}`,
+        clientSecret: this.config.onedrive.clientSecret
       }
     });
 
+    this.userEmail = this.config.onedrive.userEmail;
     this.token = null;
   }
 
-  async getToken () {
+  async getToken() {
     if (this.token) return this.token;
 
     try {
       const result = await this.msalClient.acquireTokenByClientCredential({
-        scopes: [ "https://graph.microsoft.com/.default" ]
+        scopes: ["https://graph.microsoft.com/.default"]
       });
 
       this.token = result.accessToken;
@@ -38,7 +34,7 @@ class OneDriveClient {
     }
   }
 
-  async makeGraphRequest (endpoint, method = 'GET', data = null) {
+  async makeGraphRequest(endpoint, method = 'GET', data = null) {
     const token = await this.getToken();
     const headers = {
       "Authorization": `Bearer ${token}`,
@@ -62,14 +58,16 @@ class OneDriveClient {
   async listRootFolders() {
     try {
       const items = await this.makeGraphRequest(
-        `/users/${this.config.userEmail}/drive/root/children`
+        `/users/${this.userEmail}/drive/root/children`
       );
 
-      return items.value.map(item => ({
+      const folders = items.value.map(item => ({
         name: item.name,
         type: item.folder ? 'folder' : 'file',
         id: item.id
       }));
+
+      return this.success(folders, 'Root folders retrieved successfully');
     } catch (error) {
       console.error('Failed to list folders:', error.message);
       throw error;
@@ -79,10 +77,10 @@ class OneDriveClient {
   async listFilesInFolder(folderId) {
     try {
       const items = await this.makeGraphRequest(
-        `/users/${this.config.userEmail}/drive/items/${folderId}/children`
+        `/users/${this.userEmail}/drive/items/${folderId}/children`
       );
 
-      return items.value.map(item => ({
+      const files = items.value.map(item => ({
         name: item.name,
         id: item.id,
         size: item.size,
@@ -90,6 +88,8 @@ class OneDriveClient {
         modifiedDateTime: item.lastModifiedDateTime,
         type: item.folder ? 'folder' : 'file'
       }));
+
+      return this.success(files, 'Folder contents retrieved successfully');
     } catch (error) {
       console.error('Failed to list files in folder:', error.message);
       throw error;
@@ -100,7 +100,7 @@ class OneDriveClient {
     try {
       // Get the download URL for the file
       const fileInfo = await this.makeGraphRequest(
-        `/users/${this.config.userEmail}/drive/items/${fileId}`
+        `/users/${this.userEmail}/drive/items/${fileId}`
       );
       
       // Download the file content
@@ -125,11 +125,12 @@ class OneDriveClient {
     try {
       // Split the path into segments
       const pathSegments = folderPath.split('/').filter(segment => segment);
+      console.log('Looking for path segments:', pathSegments);
       
       if (pathSegments.length === 0) {
         // If no segments, return the root folder
         const rootInfo = await this.makeGraphRequest(
-          `/users/${this.config.userEmail}/drive/root`
+          `/users/${this.userEmail}/drive/root`
         );
         return { id: rootInfo.id, name: rootInfo.name };
       }
@@ -140,12 +141,15 @@ class OneDriveClient {
 
       // Navigate through the path segments
       for (const segment of pathSegments) {
+        console.log(`Looking for folder segment: ${segment}`);
         // Get the items in the current folder
-        const endpoint = currentFolderId === 'root' 
-          ? `/users/${this.config.userEmail}/drive/root/children`
-          : `/users/${this.config.userEmail}/drive/items/${currentFolderId}/children`;
+        const endpoint = currentFolderId === 'root'
+          ? `/users/${this.userEmail}/drive/root/children`
+          : `/users/${this.userEmail}/drive/items/${currentFolderId}/children`;
         
+        console.log('Making request to endpoint:', endpoint);
         const response = await this.makeGraphRequest(endpoint);
+        console.log('Found items:', response.value.map(item => ({ name: item.name, type: item.folder ? 'folder' : 'file' })));
         
         // Find the folder matching the current segment
         const folder = response.value.find(
@@ -153,16 +157,21 @@ class OneDriveClient {
         );
 
         if (!folder) {
-          throw new Error(`Folder '${segment}' not found in path '${folderPath}'`);
+          throw new Error(`Folder '${segment}' not found in path '${folderPath}'. Available folders: ${response.value.filter(item => item.folder).map(item => item.name).join(', ')}`);
         }
 
         currentFolderId = folder.id;
         currentFolder = folder;
+        console.log(`Found folder: ${folder.name} (${folder.id})`);
       }
 
       return { id: currentFolderId, name: currentFolder.name };
     } catch (error) {
       console.error(`Failed to find folder by path '${folderPath}':`, error.message);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+      }
       throw error;
     }
   }
@@ -224,4 +233,4 @@ class OneDriveClient {
   }
 }
 
-module.exports = OneDriveClient;
+module.exports = OneDriveService;

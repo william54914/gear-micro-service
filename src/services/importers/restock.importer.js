@@ -1,6 +1,9 @@
 const BaseImporter = require('./importer.base');
 const { RestockVitals, RestockInfo, RestockCost } = require('../../models');
 const sequelize = require('../../config/database');
+const OneDriveClient = require('../onedrive.service');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 /**
  * Importer for Restock products data
@@ -9,9 +12,22 @@ class RestockImporter extends BaseImporter {
   constructor() {
     super();
     this.filename = 'restock_products.csv';
-    this.folderName = 'Restock';
+    this.folderPath = 'Inventory Management/Restock Products';
     this.batchSize = 100; // Process 100 records at a time
     this.markMissingAsInactive = true; // Flag to mark missing items as inactive
+    this.oneDrive = new OneDriveClient();
+
+    // Log configuration on initialization
+    console.log('\nRestock Importer Configuration:');
+    console.log('Folder Path:', this.folderPath);
+    console.log('File Name:', this.filename);
+    console.log('Batch Size:', this.batchSize);
+    console.log('Mark Missing as Inactive:', this.markMissingAsInactive);
+    console.log('\nOneDrive Environment Variables:');
+    console.log('ONEDRIVE_CLIENT_ID:', process.env.ONEDRIVE_CLIENT_ID?.substring(0, 5) + '...');
+    console.log('ONEDRIVE_CLIENT_SECRET:', process.env.ONEDRIVE_CLIENT_SECRET?.substring(0, 5) + '...');
+    console.log('ONEDRIVE_TENANT_ID:', process.env.ONEDRIVE_TENANT_ID?.substring(0, 5) + '...');
+    console.log('ONEDRIVE_USER_EMAIL:', process.env.ONEDRIVE_USER_EMAIL);
   }
 
   /**
@@ -20,7 +36,13 @@ class RestockImporter extends BaseImporter {
    * @param {string} filename - File name to import
    */
   setSource(folderName, filename) {
-    this.folderName = folderName;
+    console.log('\nChanging source configuration:');
+    console.log('Old Folder Path:', this.folderPath);
+    console.log('Old File Name:', this.filename);
+    console.log('New Folder Path:', folderName);
+    console.log('New File Name:', filename);
+
+    this.folderPath = folderName;
     this.filename = filename;
     return this;
   }
@@ -135,6 +157,114 @@ class RestockImporter extends BaseImporter {
     } catch (error) {
       console.error(`Error processing record with SKU ${record.SKU || record.sku || 'unknown'}:`, error);
       return false;
+    }
+  }
+
+  /**
+   * Import data from OneDrive
+   * @returns {Promise<Object>} - Import results
+   */
+  async import() {
+    try {
+      console.log('\nStarting Restock import...');
+      console.log('OneDrive Configuration:');
+      console.log('Client ID:', process.env.ONEDRIVE_CLIENT_ID?.substring(0, 5) + '...');
+      console.log('Client Secret:', process.env.ONEDRIVE_CLIENT_SECRET?.substring(0, 5) + '...');
+      console.log('Tenant ID:', process.env.ONEDRIVE_TENANT_ID?.substring(0, 5) + '...');
+      console.log('User Email:', process.env.ONEDRIVE_USER_EMAIL);
+      
+      // Verify all required environment variables are set
+      if (!process.env.ONEDRIVE_CLIENT_ID || !process.env.ONEDRIVE_CLIENT_SECRET || 
+          !process.env.ONEDRIVE_TENANT_ID || !process.env.ONEDRIVE_USER_EMAIL) {
+        throw new Error('Missing required OneDrive environment variables');
+      }
+      
+      console.log(`\nLooking for file '${this.filename}' in path '${this.folderPath}'...`);
+      try {
+        // First, try to get an access token
+        console.log('\nGetting OneDrive access token...');
+        const token = await this.oneDrive.getToken();
+        if (!token) {
+          throw new Error('Failed to get OneDrive access token');
+        }
+        console.log('Successfully obtained access token');
+
+        // List root folders to verify connection
+        console.log('\nListing root folders...');
+        const rootFolders = await this.oneDrive.listRootFolders();
+        if (!rootFolders || !Array.isArray(rootFolders)) {
+          throw new Error('Failed to list root folders');
+        }
+        console.log('Root folders found:', rootFolders.map(f => ({ name: f.name, type: f.type })));
+
+        // Then find the target folder
+        console.log('\nFinding target folder...');
+        const folder = await this.oneDrive.findFolderByPath(this.folderPath);
+        if (!folder || !folder.id) {
+          throw new Error(`Folder not found: ${this.folderPath}`);
+        }
+        console.log('Found folder:', folder);
+        
+        // List files in the folder
+        console.log('\nListing files in folder...');
+        const files = await this.oneDrive.listFilesInFolder(folder.id);
+        if (!files || !Array.isArray(files)) {
+          throw new Error('Failed to list files in folder');
+        }
+        console.log('Files in folder:', files.map(f => ({ name: f.name, type: f.type })));
+        
+        // Find our target file
+        console.log('\nLooking for target file...');
+        const file = await this.oneDrive.findFileInFolder(folder.id, this.filename);
+        if (!file || !file.id) {
+          throw new Error(`File not found: ${this.filename}`);
+        }
+        console.log('Found file:', file);
+        
+        console.log('\nDownloading file content...');
+        const csvContent = await this.oneDrive.getFileContent(file.id);
+        if (!csvContent) {
+          throw new Error('Failed to download file content');
+        }
+        console.log('File content downloaded:', csvContent.substring(0, 100) + '...');
+        
+        // Process the CSV content
+        return await super.import(csvContent);
+      } catch (error) {
+        console.error('\nError accessing OneDrive:', error);
+        if (error.response) {
+          console.error('Response status:', error.response.status);
+          console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+        }
+        if (error.message.includes('invalid_client')) {
+          console.error('\nOneDrive authentication failed. Please check:');
+          console.error('1. ONEDRIVE_CLIENT_ID is correct');
+          console.error('2. ONEDRIVE_CLIENT_SECRET is correct');
+          console.error('3. ONEDRIVE_TENANT_ID is correct');
+          console.error('4. ONEDRIVE_USER_EMAIL is correct');
+          console.error('\nCurrent values:');
+          console.error('ONEDRIVE_CLIENT_ID:', process.env.ONEDRIVE_CLIENT_ID);
+          console.error('ONEDRIVE_CLIENT_SECRET:', process.env.ONEDRIVE_CLIENT_SECRET);
+          console.error('ONEDRIVE_TENANT_ID:', process.env.ONEDRIVE_TENANT_ID);
+          console.error('ONEDRIVE_USER_EMAIL:', process.env.ONEDRIVE_USER_EMAIL);
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error('\nError during Restock import:', error);
+      if (error.message.includes('Missing required OneDrive environment variables')) {
+        console.error('\nPlease check your .env file has the following variables:');
+        console.error('- ONEDRIVE_CLIENT_ID');
+        console.error('- ONEDRIVE_CLIENT_SECRET');
+        console.error('- ONEDRIVE_TENANT_ID');
+        console.error('- ONEDRIVE_USER_EMAIL');
+      } else if (error.message.includes('Folder') || error.message.includes('File')) {
+        console.error('\nPlease check:');
+        console.error(`1. The folder path "${this.folderPath}" exists`);
+        console.error(`2. The file "${this.filename}" exists in that folder`);
+        console.error('3. The OneDrive credentials are correct');
+      }
+      throw error;
     }
   }
 

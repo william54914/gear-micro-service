@@ -1,34 +1,27 @@
 const express = require('express');
 const router = express.Router();
+const userController = require('../controllers/user.controller');
+const { authenticate, authorize } = require('../middleware/auth');
 
-// Get all users
-router.get('/', async (req, res) => {
-  try {
-    // const users = await prisma.user.findMany();
-    res.json(users);
-  } catch (error) {
-    console.error('Error fetching users:', error);
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
+// Public routes
+router.post('/register', userController.register);
+router.post('/login', userController.login);
+router.post('/password/reset-request', userController.requestPasswordReset);
+router.post('/password/reset', userController.resetPassword);
 
-// Get user by ID
-router.get('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    // const user = await prisma.user.findUnique({
-    //   where: { id: parseInt(id) }
-    // });
-    
-    // if (!user) {
-    //   return res.status(404).json({ error: 'User not found' });
-    // }
-    
-    res.json(id);
-  } catch (error) {
-    console.error('Error fetching user:', error);
-    res.status(500).json({ error: 'Failed to fetch user' });
-  }
-});
+// Protected routes
+router.use(authenticate);
+
+// User profile routes
+router.get('/profile', userController.getUser);
+router.put('/profile', userController.updateProfile);
+router.put('/password', userController.updatePassword);
+
+// Admin routes
+router.use(authorize('admin'));
+router.get('/', userController.getUsers);
+router.get('/:id', userController.getUser);
+router.put('/:id', userController.adminUpdateUser);
+router.delete('/:id', userController.deleteUser);
 
 module.exports = router; 

@@ -1,123 +1,158 @@
-const { Model, DataTypes } = require('@sequelize/core');
+const { DataTypes } = require('sequelize');
+const BaseModel = require('./base.model');
 const sequelize = require('../config/database');
 
-class AmazonInfo extends Model {}
-
-AmazonInfo.init({
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  sku: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    field: 'seller_sku',
-    comment: 'Amazon Seller SKU (foreign key to AmazonVitals)'
-  },
-  listingId: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    field: 'listing_id',
-    comment: 'Amazon listing ID'
-  },
-  description: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-    field: 'item_description',
-    comment: 'Product description'
-  },
-  imageUrl: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    field: 'image_url',
-    comment: 'Product image URL'
-  },
-  isMarketplace: {
-    type: DataTypes.BOOLEAN,
-    allowNull: true,
-    field: 'is_marketplace',
-    comment: 'Whether the item is sold on the marketplace'
-  },
-  productIdType: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    field: 'product_id_type',
-    comment: 'Type of product ID (1=ASIN, 2=ISBN, etc.)'
-  },
-  itemNote: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-    field: 'item_note',
-    comment: 'Notes about the item'
-  },
-  itemCondition: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    field: 'item_condition',
-    comment: 'Condition of the item (11=New, etc.)'
-  },
-  openDate: {
-    type: DataTypes.DATE,
-    allowNull: true,
-    field: 'open_date',
-    comment: 'Date when the listing was opened'
-  },
-  asin1: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: 'Primary ASIN'
-  },
-  asin2: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: 'Secondary ASIN'
-  },
-  asin3: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: 'Tertiary ASIN'
-  },
-  productId: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    field: 'product_id',
-    comment: 'Product ID (usually same as ASIN)'
-  },
-  fulfillmentChannel: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    field: 'fulfillment_channel',
-    comment: 'Fulfillment channel (AMAZON_NA, MERCHANT, etc.)'
-  },
-  merchantShippingGroup: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    field: 'merchant_shipping_group',
-    comment: 'Merchant shipping group'
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'created_at'
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'updated_at'
+class AmazonInfo extends BaseModel {
+  static get attributes() {
+    return {
+      sku: {
+        type: DataTypes.STRING,
+        primaryKey: true,
+        allowNull: false,
+        unique: true
+      },
+      listingId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'listing_id'
+      },
+      description: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
+      imageUrl: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'image_url',
+        validate: {
+          isUrl: true
+        }
+      },
+      isMarketplace: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+        field: 'is_marketplace'
+      },
+      productIdType: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'product_id_type'
+      },
+      itemNote: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'item_note'
+      },
+      itemCondition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'item_condition'
+      },
+      openDate: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'open_date'
+      },
+      asin1: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      asin2: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      asin3: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      productId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'product_id'
+      },
+      fulfillmentChannel: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'fulfillment_channel'
+      },
+      merchantShippingGroup: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'merchant_shipping_group'
+      },
+      brand: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      manufacturer: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      condition: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: 'New'
+      },
+      category: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      subcategory: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      bulletPoint1: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bullet_point_1'
+      },
+      bulletPoint2: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bullet_point_2'
+      },
+      bulletPoint3: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bullet_point_3'
+      },
+      bulletPoint4: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bullet_point_4'
+      },
+      bulletPoint5: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bullet_point_5'
+      },
+      searchTerms: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'search_terms'
+      },
+      imageUrls: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        field: 'image_urls'
+      }
+    };
   }
-}, {
+
+  static associate(models) {
+    this.belongsTo(models.AmazonVitals, {
+      foreignKey: 'sku',
+      targetKey: 'sku'
+    });
+  }
+}
+
+// Initialize the model
+AmazonInfo.init(AmazonInfo.attributes, {
   sequelize,
   modelName: 'AmazonInfo',
-  tableName: 'amazon_info',
-  timestamps: true,
-  underscored: true,
-  indexes: [
-    {
-      fields: ['seller_sku'],
-      unique: true
-    }
-  ]
+  tableName: 'amazon_info'
 });
 
 module.exports = AmazonInfo; 

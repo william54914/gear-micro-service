@@ -1,9 +1,27 @@
 const Client = require('ssh2-sftp-client');
-require('dotenv').config();
+const config = require('../../config/env');
 
 class SftpService {
-  constructor() {
+  constructor(sftpConfig = null) {
     this.client = new Client();
+    
+    // If config is provided, validate it has required fields
+    if (sftpConfig) {
+      this.validateSftpConfig(sftpConfig);
+      this.config = sftpConfig;
+    }
+  }
+
+  validateSftpConfig(sftpConfig) {
+    const required = ['host', 'user', 'password'];
+    const missing = required.filter(field => !sftpConfig[field]);
+    if (missing.length > 0) {
+      throw new Error(`Missing required SFTP configuration fields: ${missing.join(', ')}`);
+    }
+    
+    if (sftpConfig.port && !Number.isInteger(parseInt(sftpConfig.port))) {
+      throw new Error('SFTP port must be a valid number');
+    }
   }
 
   async connect(config) {

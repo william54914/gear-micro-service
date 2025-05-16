@@ -1,3 +1,6 @@
+const sequelize = require('../config/database');
+
+// Import directly initialized models (these are already initialized with sequelize)
 const User = require('./User');
 const AmazonVitals = require('./AmazonVitals');
 const AmazonInfo = require('./AmazonInfo');
@@ -7,72 +10,17 @@ const AmazonZShop = require('./AmazonZShop');
 const RestockVitals = require('./RestockVitals');
 const RestockInfo = require('./RestockInfo');
 const RestockCost = require('./RestockCost');
+const Vendor = require('./Vendor');
+const VendorBrand = require('./VendorBrand');
+const VendorProduct = require('./VendorProduct');
+const VendorProductAttributes = require('./VendorProductAttributes');
+const VendorProductDimensions = require('./VendorProductDimensions');
+const VendorProductImages = require('./VendorProductImages');
+const VendorDistributorInfo = require('./VendorDistributorInfo');
+const VendorVehicleCompatibility = require('./VendorVehicleCompatibility');
 
-// Define relationships
-// AmazonVitals is the central table that all other tables reference via SKU
-AmazonVitals.hasOne(AmazonInfo, {
-  foreignKey: 'sku',
-  sourceKey: 'sku',
-  as: 'info'
-});
-AmazonInfo.belongsTo(AmazonVitals, {
-  foreignKey: 'sku',
-  targetKey: 'sku'
-});
-
-AmazonVitals.hasOne(AmazonPrice, {
-  foreignKey: 'sku',
-  sourceKey: 'sku',
-  as: 'price'
-});
-AmazonPrice.belongsTo(AmazonVitals, {
-  foreignKey: 'sku',
-  targetKey: 'sku'
-});
-
-AmazonVitals.hasOne(AmazonQuantity, {
-  foreignKey: 'sku',
-  sourceKey: 'sku',
-  as: 'quantity'
-});
-AmazonQuantity.belongsTo(AmazonVitals, {
-  foreignKey: 'sku',
-  targetKey: 'sku'
-});
-
-AmazonVitals.hasOne(AmazonZShop, {
-  foreignKey: 'sku',
-  sourceKey: 'sku',
-  as: 'zshop'
-});
-AmazonZShop.belongsTo(AmazonVitals, {
-  foreignKey: 'sku',
-  targetKey: 'sku'
-});
-
-// Define relationships for restock models
-// RestockVitals is the central table for restock data
-RestockVitals.hasOne(RestockInfo, {
-  foreignKey: 'sku',
-  sourceKey: 'sku',
-  as: 'info'
-});
-RestockInfo.belongsTo(RestockVitals, {
-  foreignKey: 'sku',
-  targetKey: 'sku'
-});
-
-RestockVitals.hasOne(RestockCost, {
-  foreignKey: 'sku',
-  sourceKey: 'sku',
-  as: 'cost'
-});
-RestockCost.belongsTo(RestockVitals, {
-  foreignKey: 'sku',
-  targetKey: 'sku'
-});
-
-module.exports = {
+// Put all models in an object
+const models = {
   User,
   AmazonVitals,
   AmazonInfo,
@@ -81,5 +29,23 @@ module.exports = {
   AmazonZShop,
   RestockVitals,
   RestockInfo,
-  RestockCost
-}; 
+  RestockCost,
+  Vendor,
+  VendorBrand,
+  VendorProduct,
+  VendorProductAttributes,
+  VendorProductDimensions,
+  VendorProductImages,
+  VendorDistributorInfo,
+  VendorVehicleCompatibility,
+  sequelize
+};
+
+// Run associate methods for all models that have them
+Object.values(models).forEach(model => {
+  if (model.associate) {
+    model.associate(models);
+  }
+});
+
+module.exports = models; 
