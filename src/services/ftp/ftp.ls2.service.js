@@ -411,7 +411,7 @@ class LS2FtpService extends BaseService {
                 await transaction.commit();
                 console.log('Transaction committed successfully');
                 console.log('Import results:', results);
-                return results;
+                resolve(results);
               } catch (error) {
                 console.error('Error processing CSV data:', error);
                 await transaction.rollback();
@@ -467,50 +467,43 @@ class LS2FtpService extends BaseService {
   // Import all available LS2 files
   async importAllFiles() {
     try {
-      const files = await this.listFiles();
-      console.log(`Found ${files.length} LS2 files to import`);
-      console.log('Files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
-      
-      const results = [];
-      
-      for (const file of files) {
-        if (file.type === 'file' || file.type === 1) { // Check for both 'file' string and type 1
-          if (file.name.toLowerCase().endsWith('.csv')) { // Only process CSV files
-            console.log(`Processing file: ${file.name}`);
+        // Get list of files
+        const files = await this.listFiles();
+        console.log('Found', files.length, 'LS2 files to import');
+        console.log('Files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
+
+        // Process each CSV file
+        const results = {
+            totalFiles: files.length,
+            processed: []
+        };
+
+        // Only process CSV files
+        const csvFiles = files.filter(f => f.name.toLowerCase().endsWith('.csv'));
+        
+        for (const file of csvFiles) {
+            console.log('Processing file:', file.name);
             try {
-              console.log(`Attempting to import file: ${file.name}`);
-              const result = await this.importFile(file.name);
-              console.log(`Import result for ${file.name}:`, result);
-              results.push({
-                file: file.name,
-                success: true,
-                result
-              });
+                const result = await this.importFile(file.name);
+                results.processed.push({
+                    file: file.name,
+                    success: true,
+                    ...result
+                });
             } catch (error) {
-              console.error(`Error importing file ${file.name}:`, error);
-              results.push({
-                file: file.name,
-                success: false,
-                error: error.message
-              });
+                console.error('Error importing file:', file.name, error);
+                results.processed.push({
+                    file: file.name,
+                    success: false,
+                    error: error.message
+                });
             }
-          } else {
-            console.log(`Skipping non-CSV file: ${file.name}`);
-          }
-        } else {
-          console.log(`Skipping non-file: ${file.name} (type: ${file.type})`);
         }
-      }
-      
-      const processedResults = {
-        totalFiles: files.filter(f => (f.type === 'file' || f.type === 1) && f.name.toLowerCase().endsWith('.csv')).length,
-        processed: results
-      };
-      console.log('Final import results:', processedResults);
-      return processedResults;
+
+        return results;
     } catch (error) {
-      console.error('Error importing all LS2 files:', error);
-      throw error;
+        console.error('Error importing LS2 files:', error);
+        throw error;
     }
   }
 }

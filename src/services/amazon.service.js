@@ -38,8 +38,8 @@ class AmazonService extends BaseService {
 		this.spApi = spApi;
 		this.spApi.config({
 			region: process.env.AMAZON_REGION || 'us-east-1',
-			accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-			secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+			accessKeyId: process.env.AWS_ACCESS_KEY,
+			secretAccessKey: process.env.AWS_SECRET_KEY,
 			role: process.env.AMAZON_ROLE_ARN
 		});
 		
@@ -52,8 +52,8 @@ class AmazonService extends BaseService {
 			console.log('Client ID:', process.env.AMAZON_CLIENT_ID ? 'Set' : 'Not set');
 			console.log('Client Secret:', process.env.AMAZON_CLIENT_SECRET ? 'Set' : 'Not set');
 			console.log('Refresh Token:', process.env.AMAZON_REFRESH_TOKEN ? 'Set' : 'Not set');
-			console.log('AWS Access Key:', process.env.AWS_ACCESS_KEY_ID ? 'Set' : 'Not set');
-			console.log('AWS Secret Key:', process.env.AWS_SECRET_ACCESS_KEY ? 'Set' : 'Not set');
+			console.log('AWS Access Key:', process.env.AWS_ACCESS_KEY ? 'Set' : 'Not set');
+			console.log('AWS Secret Key:', process.env.AWS_SECRET_KEY ? 'Set' : 'Not set');
 			console.log('Role ARN:', process.env.AMAZON_ROLE_ARN ? 'Set' : 'Not set');
 			console.log('Region:', process.env.AMAZON_REGION || 'us-east-1');
 
@@ -71,8 +71,8 @@ class AmazonService extends BaseService {
 				}
 			};
 			aws4.sign(opts, {
-				accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-				secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+				accessKeyId: process.env.AWS_ACCESS_KEY,
+				secretAccessKey: process.env.AWS_SECRET_KEY
 			});
 
 			return await new Promise((resolve, reject) => {

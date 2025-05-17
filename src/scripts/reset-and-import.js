@@ -16,6 +16,7 @@ const { RestockVitals, RestockInfo, RestockCost,
         AmazonVitals, AmazonInfo, AmazonPrice, AmazonQuantity } = require('../models');
 const RestockImporter = require('../services/importers/restock.importer');
 const amazonService = require('../services/amazon.service');
+const amazonDbService = require('../services/amazonDb.service');
 const ls2Service = require('../services/ftp/ftp.ls2.service');
 
 function logMemoryUsage() {
@@ -123,23 +124,62 @@ async function resetAndImport() {
         }
 
         // Import Amazon data
-        console.log('\nImporting Amazon data...');
-        const amazonListings = await amazonService.getAllListings();
-        console.log('\nAmazon import results:', {
-            total: amazonListings.count,
-            success: amazonListings.success
-        });
+        console.log('\nStarting Amazon import...');
+        console.log('Amazon Environment Variables:');
+        console.log('AMAZON_CLIENT_ID:', process.env.AMAZON_CLIENT_ID?.substring(0, 5) + '...');
+        console.log('AMAZON_CLIENT_SECRET:', process.env.AMAZON_CLIENT_SECRET?.substring(0, 5) + '...');
+        console.log('AMAZON_REFRESH_TOKEN:', process.env.AMAZON_REFRESH_TOKEN?.substring(0, 5) + '...');
+        console.log('AWS_ACCESS_KEY:', process.env.AWS_ACCESS_KEY?.substring(0, 5) + '...');
+        console.log('AWS_SECRET_KEY:', process.env.AWS_SECRET_KEY?.substring(0, 5) + '...');
+        console.log('AWS_REGION:', process.env.AWS_REGION || 'us-east-1');
+        
+        try {
+            // Get listings from Amazon API
+            console.log('\nFetching listings from Amazon SP-API...');
+            const amazonListings = await amazonService.getAllListings();
+            console.log('\nAmazon API results:', {
+                total: amazonListings.count,
+                success: amazonListings.success
+            });
 
-        if (!amazonListings.success) {
-            console.error('\nError importing Amazon listings:', amazonListings.message);
+            if (!amazonListings.success) {
+                console.error('\nError fetching Amazon listings:', amazonListings.message);
+            } else {
+                // Log a sample of the data
+                if (amazonListings.data && amazonListings.data.length > 0) {
+                    console.log('\nSample Amazon listing data (first item):');
+                    console.log(JSON.stringify(amazonListings.data[0], null, 2));
+                    console.log('\nAvailable fields:', Object.keys(amazonListings.data[0]).join(', '));
+                }
+                
+                // Save listings to database
+                console.log('\nSaving Amazon listings to database...');
+                const saveResults = await amazonDbService.saveListings(amazonListings.data);
+                console.log('Database save results:', {
+                    success: saveResults.success,
+                    savedCount: saveResults.savedCount,
+                    errorCount: saveResults.errorCount,
+                    message: saveResults.message
+                });
+            }
+
+            // Get Amazon inventory
+            console.log('\nFetching Amazon inventory...');
+            const amazonInventory = await amazonService.getInventory();
+            console.log('Amazon inventory fetched:', {
+                inventorySummaries: amazonInventory.payload?.inventorySummaries?.length || 0
+            });
+        } catch (error) {
+            console.error('\nError during Amazon import:', error);
+            if (error.response) {
+                console.error('Response status:', error.response.status);
+                console.error('Response data:', error.response.data);
+            }
+            console.error('Stack trace:', error.stack);
         }
 
-        // Get Amazon inventory
-        console.log('\nFetching Amazon inventory...');
-        const amazonInventory = await amazonService.getInventory();
-        console.log('Amazon inventory fetched:', {
-            inventorySummaries: amazonInventory.payload?.inventorySummaries?.length || 0
-        });
+        // TODO: Save inventory data to database
+        // This will require implementing inventory save functionality in amazonDb.service.js
 
         console.log('\nAll imports completed successfully!');
         logMemoryUsage();

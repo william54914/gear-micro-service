@@ -57,9 +57,7 @@ class AmazonDbService extends BaseService {
         console.log(`Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} records)...`);
         
         // Start a transaction for this batch
-        const transaction = await sequelize.startUnmanagedTransaction();
-        
-        try {
+        await sequelize.transaction(async (transaction) => {
           // Collect SKUs in this batch for efficient querying
           const batchSkus = batch.map(listing => listing['seller-sku']).filter(Boolean);
           
@@ -237,16 +235,9 @@ class AmazonDbService extends BaseService {
               transaction
             });
           }
-          
-          // Commit the transaction
-          await transaction.commit();
-          console.log(`Batch ${batchIndex + 1} processed. Success: ${savedCount}, Errors: ${errorCount}`);
-        } catch (error) {
-          // Rollback the transaction on error
-          await transaction.rollback();
-          console.error(`Error processing batch ${batchIndex + 1}:`, error);
-          errorCount += batch.length;
-        }
+        });
+        
+        console.log(`Batch ${batchIndex + 1} processed. Success: ${savedCount}, Errors: ${errorCount}`);
       }
       
       // Mark items as inactive if they're not in the current import
@@ -290,7 +281,7 @@ class AmazonDbService extends BaseService {
             const activateQuery = `
               UPDATE amazon_vitals
               SET status = 'Active', updated_at = NOW()
-              WHERE seller_sku IN (
+              WHERE sku IN (
                 SELECT unnest($1::text[])
               )
             `;
@@ -321,7 +312,7 @@ class AmazonDbService extends BaseService {
             UPDATE amazon_vitals
             SET status = 'Inactive', updated_at = NOW()
             WHERE status != 'Inactive'
-            AND seller_sku NOT IN (
+            AND sku NOT IN (
               SELECT unnest($1::text[])
             )
           `;
