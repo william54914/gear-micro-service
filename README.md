@@ -2,6 +2,25 @@
 
 A robust Node.js microservice for managing vendor products, inventory, and marketplace integrations. Built with Express.js, Sequelize ORM, and PostgreSQL.
 
+## Table of Contents
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Tech Stack](#tech-stack)
+- [Dependencies](#dependencies)
+- [Project Structure](#project-structure)
+- [Setup](#setup)
+- [Configuration](#configuration)
+- [Available Scripts](#available-scripts)
+- [Current Project Status](#current-project-status)
+- [API Documentation](#api-documentation)
+- [Database](#database)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Security](#security)
+- [Contributing](#contributing)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
 ## Features
 
 - **User Management**
@@ -23,9 +42,38 @@ A robust Node.js microservice for managing vendor products, inventory, and marke
   - Order processing
 
 - **File Management**
-  - FTP/SFTP support
+  - FTP/SFTP support for multiple vendors (LS2, PartsUnlimited, HelmetHouse)
   - OneDrive integration
   - Bulk import/export
+  - CSV processing
+
+## Architecture Overview
+
+### Application Flow
+```
+Client Request → Express Router → Middleware → Controller → Service → Model → Database
+     ↑                                                           ↓
+     └───────────────── Response ────────────────────────────────┘
+```
+
+### Key Components
+- **Controllers** (`src/controllers/`): Handle HTTP requests and responses
+- **Services** (`src/services/`): Contain business logic and external service integration
+- **Models** (`src/models/`): Define database schema and relationships
+- **Middleware** (`src/middleware/`): Request processing, authentication, logging
+- **Routes** (`src/routes/`): API endpoint definitions
+- **Schemas** (`src/schemas/`): Request/response validation schemas
+- **Config** (`src/config/`): Application configuration
+- **Scripts** (`src/scripts/`): Utility and maintenance scripts
+
+### External Service Integration
+```
+                     ┌─── Amazon SP-API
+                     │
+Gear Microservice ───┼─── OneDrive API
+                     │
+                     └─── FTP Services (LS2, PartsUnlimited, HelmetHouse)
+```
 
 ## Prerequisites
 
@@ -40,8 +88,65 @@ A robust Node.js microservice for managing vendor products, inventory, and marke
 - **Database**: PostgreSQL, Sequelize ORM
 - **Authentication**: JWT, bcrypt
 - **Validation**: Joi
-- **Testing**: Jest, Supertest
-- **Documentation**: Swagger/OpenAPI
+- **Testing**: Jest, Supertest, K6 for performance testing
+- **Documentation**: OpenAPI/Swagger
+- **Cloud Integration**: Microsoft Graph API, Amazon SP-API
+- **File Transfer**: Basic-FTP, SSH2-SFTP-Client
+
+## Dependencies
+
+### Core Dependencies
+```json
+{
+  "@microsoft/microsoft-graph-client": "^3.0.7",  // Microsoft Graph API integration
+  "api": "^6.1.3",                               // API client utilities
+  "aws4": "^1.13.2",                            // AWS request signing
+  "basic-ftp": "^5.0.5",                        // FTP client
+  "bcryptjs": "^2.4.3",                         // Password hashing
+  "cors": "^2.8.5",                             // Cross-Origin Resource Sharing
+  "csv-parser": "^3.2.0",                       // CSV file processing
+  "dotenv": "^16.3.1",                          // Environment variables management
+  "express": "^4.18.2",                         // Web framework
+  "ftp": "^0.3.10",                             // FTP client (legacy support)
+  "helmet": "^7.1.0",                           // Security headers
+  "isomorphic-fetch": "^3.0.0",                 // Universal fetch API
+  "joi": "^17.11.0",                            // Data validation
+  "jsonwebtoken": "^9.0.2",                     // JWT authentication
+  "morgan": "^1.10.0",                          // HTTP request logger
+  "oas": "^20.11.0",                            // OpenAPI/Swagger support
+  "pg": "^8.11.3",                              // PostgreSQL client
+  "sequelize": "^6.37.7",                       // ORM for database
+  "ssh2-sftp-client": "^12.0.0"                 // SFTP client
+}
+```
+
+### Development Dependencies
+```json
+{
+  "@types/jest": "^29.5.10",                    // TypeScript definitions for Jest
+  "artillery": "^2.0.0-38",                     // Load testing
+  "cross-env": "^7.0.3",                        // Cross-platform env variables
+  "eslint": "^8.54.0",                          // Code linting
+  "eslint-config-prettier": "^9.0.0",           // Prettier integration
+  "eslint-plugin-jest": "^27.6.0",              // Jest linting rules
+  "jest": "^29.7.0",                            // Testing framework
+  "k6": "^0.0.0",                               // Performance testing
+  "nodemon": "^3.0.1",                          // Development auto-reload
+  "prettier": "^3.1.0",                         // Code formatting
+  "sequelize-mock": "^0.10.2",                  // Database mocking
+  "sqlite3": "^5.1.7",                          // SQLite for testing
+  "supertest": "^6.3.4",                        // HTTP testing
+  "umzug": "^3.8.2"                             // Migration management
+}
+```
+
+### Global Dependencies
+These need to be installed globally on your system:
+```bash
+npm install -g sequelize-cli    # Sequelize command line interface
+npm install -g k6              # K6 performance testing tool
+npm install -g artillery       # Artillery for load testing
+```
 
 ## Project Structure
 
@@ -49,31 +154,156 @@ A robust Node.js microservice for managing vendor products, inventory, and marke
 .
 ├── src/
 │   ├── config/         # Configuration files
-│   │   ├── env.js     # Environment configuration
-│   │   └── database.js # Database configuration
+│   │   ├── database.js # Database configuration
+│   │   ├── logger.js   # Logging configuration
+│   │   └── app.js      # Application configuration
 │   ├── controllers/    # Request handlers
+│   │   ├── user.controller.js
+│   │   ├── vendor.controller.js
+│   │   └── import.controller.js
 │   ├── models/        # Database models
+│   │   ├── index.js   # Model associations
+│   │   ├── user.js
+│   │   └── vendor.js
 │   ├── routes/        # API routes
+│   │   ├── index.js   # Route aggregation
+│   │   ├── user.routes.js
+│   │   └── vendor.routes.js
 │   ├── services/      # Business logic
+│   │   ├── ftp/      # FTP services for different vendors
+│   │   │   ├── ls2.service.js
+│   │   │   └── partsunlimited.service.js
+│   │   └── importers/ # Data import services
+│   │       ├── amazon.importer.js
+│   │       └── restock.importer.js
 │   ├── schemas/       # Validation schemas
+│   │   ├── user.schema.js
+│   │   └── vendor.schema.js
 │   ├── middleware/    # Custom middleware
+│   │   ├── auth.js
+│   │   ├── error.js
+│   │   └── validation.js
 │   ├── migrations/    # Database migrations
 │   └── tests/         # Test files
 │       ├── unit/     # Unit tests
 │       ├── integration/ # Integration tests
 │       ├── e2e/      # End-to-end tests
-│       ├── performance/ # Performance tests
-│       ├── fixtures/ # Test fixtures and mock data
-│       ├── helpers/  # Test helper functions
+│       ├── performance/ # Performance tests (K6)
+│       ├── fixtures/ # Test fixtures
+│       ├── helpers/  # Test helpers
 │       ├── db/       # Database test utilities
-│       ├── utils/    # Test utilities
-│       ├── setup.js  # Global test setup
-│       ├── jest.unit.config.js # Unit test configuration
-│       ├── jest.integration.config.js # Integration test configuration
-│       └── jest.e2e.config.js # E2E test configuration
-├── scripts/           # Utility scripts
-└── docs/             # Documentation
+│       └── utils/    # Test utilities
+├── scripts/          # Utility scripts
+│   ├── import/       # Data import scripts
+│   └── deploy/       # Deployment scripts
+└── docs/            # Documentation
+    ├── api/         # API documentation
+    └── setup/       # Setup guides
 ```
+
+## Configuration
+
+### Environment Variables
+All environment variables should be set in a `.env` file. See [Setup](#setup) section for the complete list.
+
+### Configuration Files
+- `src/config/database.js`: Database connection and options
+- `src/config/logger.js`: Logging configuration
+- `src/config/app.js`: Application settings
+
+### Logging
+The application uses Morgan for HTTP request logging and a custom logger for application logs:
+- Access logs: All HTTP requests
+- Error logs: Application errors and exceptions
+- Debug logs: Development debugging information
+
+## Database
+
+### Entity Relationship Diagram
+```
+User ─┬─── UserRole
+      │
+      ├─── Vendor ─── Brand
+      │
+      └─── Product ─── Inventory
+```
+
+### Migrations
+Located in `src/migrations/`. Run in sequence using:
+```bash
+npm run migrate
+```
+
+### Models
+- **User**: User account management
+- **Vendor**: Vendor information and relationships
+- **Product**: Product catalog
+- **Inventory**: Stock levels and tracking
+- **Brand**: Brand management
+
+## Security
+
+### Authentication
+- JWT-based authentication
+- Role-based access control (RBAC)
+- Password hashing with bcrypt
+
+### API Security
+- CORS configuration
+- Rate limiting
+- Helmet security headers
+- Input validation with Joi
+
+### Best Practices
+- Environment variable management
+- Secure password storage
+- API key rotation
+- Error handling without information leakage
+
+## Troubleshooting
+
+### Common Issues
+1. **Database Connection Issues**
+   ```bash
+   npm run test:connections
+   ```
+   Check database credentials in `.env`
+
+2. **Import Failures**
+   - Verify FTP/API credentials
+   - Check file permissions
+   - Review import logs in `logs/import/`
+
+3. **Authentication Issues**
+   - Verify JWT_SECRET in `.env`
+   - Check token expiration
+   - Confirm user roles
+
+### Debugging
+- Enable debug logs: `DEBUG=app:* npm run dev`
+- Check application logs: `logs/app.log`
+- Monitor HTTP requests: `logs/access.log`
+
+## Deployment
+
+### Prerequisites
+- Node.js environment
+- PostgreSQL database
+- Environment variables configured
+- Network access to external services
+
+### Deployment Steps
+1. Clone repository
+2. Install dependencies
+3. Configure environment
+4. Run migrations
+5. Start application
+
+### Production Considerations
+- Use PM2 or similar process manager
+- Configure SSL/TLS
+- Set up monitoring
+- Configure backup strategy
 
 ## Setup
 
@@ -123,121 +353,129 @@ A robust Node.js microservice for managing vendor products, inventory, and marke
    LS2_FTP_USER=your_user
    LS2_FTP_PASS=your_password
    LS2_FTP_PORT=21
+
+   # Other Vendor FTP Settings
+   PARTS_UNLIMITED_FTP_HOST=your_host
+   HELMETHOUSE_FTP_HOST=your_host
    ```
 
-4. **Database Setup**
-   ```bash
-   # Run migrations
-   npm run migrate
+## Available Scripts
 
-   # Seed initial data (if needed)
-   npm run seed
-   ```
-
-## Running the Application
-
-**Development Mode**:
 ```bash
-npm run dev
+# Development
+npm run dev           # Run in development mode with nodemon
+npm start            # Run in production mode
+
+# Database
+npm run migrate      # Run database migrations
+npm run migrate:undo # Undo last migration
+npm run seed         # Seed database with initial data
+
+# Testing
+npm test            # Run all tests
+npm run test:unit   # Run unit tests
+npm run test:integration # Run integration tests
+npm run test:e2e    # Run end-to-end tests
+npm run test:performance # Run performance tests
+npm run test:k6     # Run K6 performance tests
+npm run test:coverage # Run tests with coverage
+npm run test:watch  # Run tests in watch mode
+npm run test:clean  # Clear Jest cache
+
+# Import and Data Management
+npm run import:all  # Import data from all sources (Amazon, LS2, Restock)
+npm run test:connections # Test all external service connections
+npm run reset:db    # Reset database and re-run migrations
+
+# Code Quality
+npm run lint        # Run ESLint
+npm run lint:fix    # Fix linting issues
 ```
 
-**Production Mode**:
-```bash
-npm start
-```
+## Current Project Status
+
+### Testing Implementation Status
+The testing framework is currently in development. Here's the current status:
+
+- ✅ Test framework setup complete
+- ✅ Basic unit test structure in place
+- ✅ Connection testing utilities implemented
+- 🚧 E2E tests (in progress)
+- 🚧 Integration tests (in progress)
+- 🚧 Performance tests (initial K6 setup done)
+- ❌ Complete test coverage not yet achieved
+
+### Data Import and Migration Status
+The project includes several data import and migration utilities:
+
+- **Import Scripts**: Located in `src/scripts/import/`
+  - Amazon SP-API direct import
+  - LS2 FTP file import
+  - Restock data from OneDrive
+  - Note: These scripts are functional but may require environment-specific configuration
+
+- **Connection Testing**: 
+  - Use `npm run test:connections` to verify connectivity to:
+    - Amazon SP-API
+    - OneDrive
+    - FTP servers (LS2, PartsUnlimited, HelmetHouse)
+    - Database
+  - This should be run before attempting any imports
+
+- **Database Reset**:
+  - The `npm run reset:db` command will:
+    - Drop all tables
+    - Re-run migrations
+    - Note: Use with caution in production environments
+
+### Known Limitations
+- Test coverage is not yet complete across all modules
+- Some E2E tests are still being developed
+- Performance testing scenarios need to be expanded
+- Import scripts may require adjustment based on vendor API changes
 
 ## API Documentation
 
-### Authentication Endpoints
+### Authentication
 - `POST /api/users/register` - Register new user
 - `POST /api/users/login` - User login
-- `POST /api/users/password/reset-request` - Request password reset
-- `POST /api/users/password/reset` - Reset password
-
-### User Endpoints
 - `GET /api/users/profile` - Get user profile
 - `PUT /api/users/profile` - Update profile
-- `PUT /api/users/password` - Update password
 
-### Vendor Endpoints
-- `GET /api/vendors` - List vendors
+### User Management
+- `GET /api/users` - List all users (Admin only)
+- `GET /api/users/:id` - Get user details
+- `PUT /api/users/:id` - Update user
+- `DELETE /api/users/:id` - Delete user
+
+### Vendor Management
+- `GET /api/vendors` - List all vendors
 - `POST /api/vendors` - Create vendor
-- `GET /api/vendors/:id` - Get vendor
+- `GET /api/vendors/:id` - Get vendor details
 - `PUT /api/vendors/:id` - Update vendor
 - `DELETE /api/vendors/:id` - Delete vendor
-
-### Product Endpoints
+- `GET /api/vendors/:vendorId/brands` - List vendor brands
 - `GET /api/vendors/:vendorId/products` - List vendor products
-- `POST /api/vendors/products` - Create product
-- `PUT /api/vendors/products/:id` - Update product
-- `DELETE /api/vendors/products/:id` - Delete product
 
 ### Amazon Integration
 - `GET /api/amazon/inventory` - Get Amazon inventory
 - `GET /api/amazon/listings` - Get Amazon listings
-- `POST /api/amazon/import` - Import listings
+- `GET /api/amazon/listings/:sku` - Get listing by SKU
+- `POST /api/amazon/import` - Import Amazon listings
 
-### File Management
-- `POST /api/ftp/upload` - Upload file via FTP
-- `GET /api/onedrive/files` - List OneDrive files
+### OneDrive Integration
+- `GET /api/onedrive/folders` - List OneDrive folders
+- `GET /api/onedrive/files/:folderId` - List files in folder
+- `GET /api/onedrive/folders/:path` - Find folder by path
+- `GET /api/onedrive/import-restock` - Import restock data
 
-## Testing
-
-The project uses Jest as the primary testing framework with different configurations for various test types.
-
-### Test Structure
-
-Tests are organized in the following directory structure:
-
-```
-src/tests/
-├── unit/            # Tests for individual components in isolation
-├── integration/     # Tests for component interactions and API endpoints
-├── e2e/             # End-to-end tests for complete business flows
-├── performance/     # Load and stress tests
-├── fixtures/        # Test fixtures and mock data
-├── helpers/         # Test helper functions
-├── db/              # Database test utilities
-└── utils/           # General test utilities
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-npm test
-
-# Run with coverage
-npm run test:coverage
-
-# Run specific test types
-npm run test:unit
-npm run test:integration
-npm run test:e2e
-npm run test:performance
-
-# Run in watch mode
-npm run test:watch
-
-# Run specific test file
-npm test -- src/tests/unit/services/user.test.js
-```
-
-### Test Configurations
-
-- **Unit Tests**: Fast tests that verify individual components in isolation with mocked dependencies
-- **Integration Tests**: Tests API endpoints and component interactions using a test database
-- **E2E Tests**: Tests complete business flows simulating real user scenarios
-- **Performance Tests**: Load and stress tests to benchmark system performance
-
-Each test type has its own Jest configuration file:
-- `src/tests/jest.unit.config.js`
-- `src/tests/jest.integration.config.js`
-- `src/tests/jest.e2e.config.js`
-
-### Code Coverage
-
-The project maintains a minimum of 80% code coverage across all files, with coverage reports generated using Jest's built-in coverage reporter.
+### FTP Management
+- `GET /api/ftp/partsunlimited` - List PartsUnlimited files
+- `GET /api/ftp/helmethouse` - List HelmetHouse files
+- `GET /api/ftp/vendor/files` - List vendor files
+- `POST /api/ftp/vendor/import/all` - Import all vendor files
+- `GET /api/ftp/ls2/files` - List LS2 files
+- `GET /api/ftp/ls2/latest` - Get latest LS2 price file
 
 ## Error Handling
 
@@ -261,6 +499,29 @@ Error response format:
 }
 ```
 
+## Testing
+
+The project uses Jest as the primary testing framework with different configurations for various test types:
+
+- **Unit Tests**: Test individual components in isolation (partially implemented)
+- **Integration Tests**: Test API endpoints and component interactions (in development)
+- **E2E Tests**: Test complete business flows (in development)
+- **Performance Tests**: Load and stress tests using K6 (basic setup complete)
+
+> ⚠️ Note: The testing framework is still under active development. Some test files may be placeholder or incomplete.
+
+### Running Tests During Development
+During development, it's recommended to:
+1. Run `npm run test:connections` first to ensure all external services are accessible
+2. Use `npm run test:watch` for active development
+3. Run `npm test` before committing changes
+
+Coverage requirements (target, not yet enforced):
+- Branches: 80%
+- Functions: 80%
+- Lines: 80%
+- Statements: 80%
+
 ## Contributing
 
 1. Fork the repository
@@ -271,4 +532,142 @@ Error response format:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Component Overview
+
+### Controllers (`src/controllers/`)
+Controllers handle the HTTP layer of the application, processing requests and sending responses. They:
+- Receive HTTP requests from routes
+- Extract and validate request data
+- Call appropriate services to handle business logic
+- Format and send responses
+- Handle request-specific error cases
+
+Key controllers:
+- `user.controller.js`: User registration, authentication, profile management
+- `vendor.controller.js`: Vendor CRUD operations, brand management
+- `import.controller.js`: Handles data import from various sources
+- `amazon.controller.js`: Amazon SP-API specific operations
+
+### Middleware (`src/middleware/`)
+Middleware functions process requests before they reach route handlers. They:
+- Execute code before/after requests
+- Modify request/response objects
+- End request-response cycles
+- Call next middleware
+
+Key middleware:
+- `auth.js`: JWT authentication and role verification
+- `error.js`: Global error handling and formatting
+- `validation.js`: Request data validation using Joi schemas
+- `logger.js`: Request logging and tracking
+
+### Models (`src/models/`)
+Models define database structure and business rules. Using Sequelize ORM, they:
+- Define table schemas
+- Set up relationships between tables
+- Handle data validation
+- Manage database operations
+
+Key models:
+- `user.js`: User account data and relationships
+- `vendor.js`: Vendor information and product relationships
+- `product.js`: Product catalog and inventory
+- `brand.js`: Brand management and vendor associations
+
+### Migrations (`src/migrations/`)
+Database migrations manage schema changes over time. They:
+- Create/modify database tables
+- Add/remove columns
+- Set up indexes and constraints
+- Handle data transformations
+
+Migration patterns:
+- Numbered sequentially (e.g., `001-create-users.js`)
+- Include both `up` (apply) and `down` (revert) functions
+- Maintain database version control
+- Support team collaboration on schema changes
+
+### Routes (`src/routes/`)
+Routes define API endpoints and map them to controllers. They:
+- Define URL patterns
+- Specify HTTP methods (GET, POST, etc.)
+- Chain relevant middleware
+- Direct requests to appropriate controllers
+
+Key route files:
+- `user.routes.js`: User-related endpoints
+- `vendor.routes.js`: Vendor management endpoints
+- `amazon.routes.js`: Amazon integration endpoints
+- `onedrive.routes.js`: OneDrive integration endpoints
+- `ftp.routes.js`: FTP service endpoints
+
+### Schemas (`src/schemas/`)
+Validation schemas define expected data structures. Using Joi, they:
+- Validate request payloads
+- Define required/optional fields
+- Set data type constraints
+- Provide custom validation rules
+
+Key schemas:
+- `user.schema.js`: User registration and update validation
+- `vendor.schema.js`: Vendor data validation
+- `product.schema.js`: Product data validation
+- `import.schema.js`: Import data validation
+
+### Services (`src/services/`)
+Services contain core business logic and external integrations. They:
+- Implement business rules
+- Handle complex operations
+- Manage external API calls
+- Process data transformations
+
+Key service categories:
+- **FTP Services** (`services/ftp/`):
+  - `ls2.service.js`: LS2 vendor file processing
+  - `partsunlimited.service.js`: PartsUnlimited integration
+  - `helmethouse.service.js`: HelmetHouse data handling
+
+- **Importers** (`services/importers/`):
+  - `amazon.importer.js`: Amazon SP-API data import
+  - `restock.importer.js`: Restock data processing
+  - `vendor.importer.js`: Generic vendor data import
+
+- **External Services**:
+  - `onedrive.service.js`: Microsoft OneDrive integration
+  - `amazon.service.js`: Amazon SP-API operations
+  - `notification.service.js`: Email/notification handling
+
+### Config (`src/config/`)
+Configuration files manage application settings. They:
+- Load environment variables
+- Set up database connections
+- Configure external services
+- Define application constants
+
+Key config files:
+- `database.js`: Database connection and Sequelize setup
+- `logger.js`: Logging configuration and formats
+- `app.js`: Express application settings
+- `auth.js`: Authentication configuration
+
+### Scripts (`src/scripts/`)
+Utility scripts automate common tasks. They handle:
+- Data imports
+- Database operations
+- Deployment tasks
+- Maintenance operations
+
+Key script categories:
+- **Import Scripts** (`scripts/import/`):
+  - Amazon data import
+  - LS2 file processing
+  - Restock data import
+  
+- **Database Scripts**:
+  - Table reset
+  - Data seeding
+  - Backup/restore
+``` 
+</rewritten_file>
