@@ -297,7 +297,6 @@ module.exports = {
           onUpdate: 'CASCADE',
           onDelete: 'CASCADE'
         },
-        cost: DataTypes.DECIMAL(10, 2),
         map_price: DataTypes.DECIMAL(10, 2),
         retail: DataTypes.DECIMAL(10, 2),
         discount_map_pct: DataTypes.DECIMAL(5, 2),

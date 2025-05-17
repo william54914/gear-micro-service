@@ -152,6 +152,9 @@ npm install -g artillery       # Artillery for load testing
 
 ```
 .
+├── .api/                # API specifications and documentation
+│   └── apis/
+│       └── sp-api/     # Amazon SP-API specifications
 ├── src/
 │   ├── config/         # Configuration files
 │   │   ├── database.js # Database configuration
@@ -162,40 +165,61 @@ npm install -g artillery       # Artillery for load testing
 │   │   ├── vendor.controller.js
 │   │   └── import.controller.js
 │   ├── models/        # Database models
+│   │   ├── base.model.js  # Base model with common functionality
 │   │   ├── index.js   # Model associations
-│   │   ├── user.js
-│   │   └── vendor.js
-│   ├── routes/        # API routes
-│   │   ├── index.js   # Route aggregation
-│   │   ├── user.routes.js
-│   │   └── vendor.routes.js
+│   │   ├── User.js    # User and authentication
+│   │   ├── UserRole.js # Role definitions
+│   │   └── UserPermission.js # User-Role associations
 │   ├── services/      # Business logic
-│   │   ├── ftp/      # FTP services for different vendors
-│   │   │   ├── ls2.service.js
-│   │   │   └── partsunlimited.service.js
+│   │   ├── base.service.js  # Base service class
+│   │   ├── amazon.service.js # Amazon SP-API integration
+│   │   ├── amazonDb.service.js # Amazon data management
+│   │   ├── onedrive.service.js # OneDrive integration
+│   │   ├── ftp/      # FTP services
+│   │   │   ├── ftp.service.js    # Base FTP functionality
+│   │   │   ├── sftp.service.js   # SFTP functionality
+│   │   │   ├── ftp.vendor.service.js # Vendor FTP base
+│   │   │   ├── ftp.ls2.service.js    # LS2 specific
+│   │   │   ├── ftp.partsunlimited.service.js
+│   │   │   └── ftp.helmethouse.service.js
 │   │   └── importers/ # Data import services
-│   │       ├── amazon.importer.js
-│   │       └── restock.importer.js
+│   │       ├── importer.base.js   # Base importer
+│   │       └── restock.importer.js # Restock specific
 │   ├── schemas/       # Validation schemas
 │   │   ├── user.schema.js
 │   │   └── vendor.schema.js
 │   ├── middleware/    # Custom middleware
-│   │   ├── auth.js
-│   │   ├── error.js
-│   │   └── validation.js
+│   │   ├── auth.js    # Authentication middleware
+│   │   ├── error.js   # Error handling
+│   │   └── validation.js # Request validation
 │   ├── migrations/    # Database migrations
 │   └── tests/         # Test files
-│       ├── unit/     # Unit tests
+│       ├── unit/      # Unit tests
+│       │   ├── models/
+│       │   ├── services/
+│       │   └── utils/
 │       ├── integration/ # Integration tests
-│       ├── e2e/      # End-to-end tests
-│       ├── performance/ # Performance tests (K6)
-│       ├── fixtures/ # Test fixtures
-│       ├── helpers/  # Test helpers
-│       ├── db/       # Database test utilities
-│       └── utils/    # Test utilities
-├── scripts/          # Utility scripts
-│   ├── import/       # Data import scripts
-│   └── deploy/       # Deployment scripts
+│       │   ├── api/
+│       │   ├── auth/
+│       │   └── external/
+│       ├── e2e/       # End-to-end tests
+│       │   ├── flows/
+│       │   └── scenarios/
+│       ├── performance/ # Performance tests
+│       │   ├── load/   # Load testing scenarios
+│       │   └── stress/ # Stress testing scenarios
+│       ├── fixtures/  # Test fixtures
+│       ├── helpers/   # Test helpers
+│       ├── mocks/     # Mock data and services
+│       │   ├── @azure/
+│       │   ├── controllers/
+│       │   ├── importers/
+│       │   └── k6/
+│       ├── real-connections/ # Real API connection tests
+│       └── utils/     # Test utilities
+├── coverage/         # Test coverage reports
+├── test-results/    # Test execution results
+├── tmp/             # Temporary files
 └── docs/            # Documentation
     ├── api/         # API documentation
     └── setup/       # Setup guides
@@ -221,25 +245,61 @@ The application uses Morgan for HTTP request logging and a custom logger for app
 
 ### Entity Relationship Diagram
 ```
-User ─┬─── UserRole
-      │
-      ├─── Vendor ─── Brand
-      │
-      └─── Product ─── Inventory
+Vendor ─┬─── VendorBrand ─── VendorProduct ─┬─── VendorProductAttributes
+        │                                   ├─── VendorProductDimensions
+        │                                   ├─── VendorProductImages
+        │                                   ├─── VendorProductInventory
+        │                                   ├─── VendorProductPricing
+        │                                   ├─── VendorVehicleCompatibility
+        │                                   └─── VendorDistributorInfo
+
+Amazon ─┬─── AmazonVitals
+        ├─── AmazonInfo
+        ├─── AmazonPrice
+        ├─── AmazonQuantity
+        └─── AmazonZShop
+
+Restock ─┬─── RestockVitals
+         ├─── RestockInfo
+         └─── RestockCost
 ```
+
+### Models
+- **Vendor**: Core vendor information
+- **VendorBrand**: Brand management for vendors
+- **VendorProduct**: Product catalog (no cost field - cost info in pricing)
+- **VendorProductAttributes**: Product attributes (color, size, etc.)
+- **VendorProductDimensions**: Physical dimensions and weights
+- **VendorProductImages**: Product images and media
+- **VendorProductInventory**: Stock levels and tracking
+- **VendorProductPricing**: Pricing information including cost
+- **VendorVehicleCompatibility**: Vehicle fitment data
+- **VendorDistributorInfo**: Distributor-specific information
+
+- **Amazon Models**:
+  - **AmazonVitals**: Core Amazon product data
+  - **AmazonInfo**: Detailed product information
+  - **AmazonPrice**: Pricing data
+  - **AmazonQuantity**: Inventory levels
+  - **AmazonZShop**: Amazon storefront data
+
+- **Restock Models**:
+  - **RestockVitals**: Core restock product data
+  - **RestockInfo**: Detailed product information
+  - **RestockCost**: Cost information
+
+### Data Processing
+The application processes data in optimized batch sizes based on available system resources:
+- Default batch size: 5000 records
+- Configurable via environment variables
+- Optimized for systems with 64GB+ RAM
+- Transaction-based processing for data integrity
 
 ### Migrations
 Located in `src/migrations/`. Run in sequence using:
 ```bash
 npm run migrate
 ```
-
-### Models
-- **User**: User account management
-- **Vendor**: Vendor information and relationships
-- **Product**: Product catalog
-- **Inventory**: Stock levels and tracking
-- **Brand**: Brand management
 
 ## Security
 
@@ -669,5 +729,111 @@ Key script categories:
   - Table reset
   - Data seeding
   - Backup/restore
+
+## User System
+
+### User Roles and Permissions
+The application implements a flexible role-based access control (RBAC) system:
+
+#### Roles
+- **Admin**: Full system access
+- **Manager**: Product and vendor management
+- **User**: Basic access and viewing rights
+
+#### User Model Features
+- Secure password hashing with bcrypt
+- Password reset functionality
+- JWT-based authentication
+- Last login tracking
+- Profile management
+- Role-based access control
+
+#### User-Role Relationships
+- Many-to-many relationship between Users and Roles
+- Managed through UserPermission junction table
+- Flexible role assignment and revocation
+- Role-based middleware for route protection
+
+### Database Schema Updates
+
+#### User Tables
+```sql
+users
+  ├── user_id (PK)
+  ├── username (unique)
+  ├── email (unique)
+  ├── password_hash
+  ├── first_name
+  ├── last_name
+  ├── role (enum: admin, manager, user)
+  ├── active
+  ├── last_login_at
+  ├── password_reset_token
+  ├── password_reset_expires
+  ├── created_at
+  └── updated_at
+
+user_roles
+  ├── role_id (PK)
+  ├── role_name (unique)
+  ├── active
+  ├── created_at
+  └── updated_at
+
+user_permissions
+  ├── permission_id (PK)
+  ├── user_id (FK)
+  ├── role_id (FK)
+  ├── active
+  ├── created_at
+  └── updated_at
+```
+
+## Services
+
+### Core Services
+- **Base Service**: Abstract base class with common functionality
+- **Amazon Service**: SP-API integration and marketplace management
+- **AmazonDB Service**: Database operations for Amazon data
+- **OneDrive Service**: Microsoft Graph API integration
+
+### FTP Services
+- **Base FTP Service**: Common FTP operations
+- **SFTP Service**: Secure FTP functionality
+- **Vendor FTP Service**: Base class for vendor-specific FTP
+- **LS2 FTP Service**: LS2-specific file handling
+- **PartsUnlimited FTP Service**: PartsUnlimited integration
+- **HelmetHouse FTP Service**: HelmetHouse integration
+
+### Import Services
+- **Base Importer**: Common import functionality
+- **Restock Importer**: Restock-specific import logic
+
+## Testing
+
+### Test Structure
+```
+tests/
+├── unit/           # Unit tests for isolated components
+├── integration/    # API and service integration tests
+├── e2e/           # End-to-end flow testing
+├── performance/    # Load and stress testing
+├── real-connections/ # External API connection tests
+└── mocks/         # Mock implementations
+```
+
+### Test Categories
+- **Unit Tests**: Individual component testing
+- **Integration Tests**: Component interaction testing
+- **E2E Tests**: Complete flow testing
+- **Performance Tests**: Load and stress testing
+- **Connection Tests**: External service connectivity
+- **Mock Tests**: Testing with mock data
+
+### Testing Tools
+- Jest for unit and integration testing
+- Supertest for HTTP endpoint testing
+- K6 for performance testing
+- Custom utilities for connection testing
 ``` 
 </rewritten_file>

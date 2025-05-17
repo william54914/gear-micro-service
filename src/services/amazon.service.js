@@ -11,9 +11,8 @@ const https = require('https');
 
 class AmazonService extends BaseService {
 	constructor() {
-		super('amazon'); // This will validate Amazon config
+		super('amazon');
 
-		// Skip configuration in test environment unless FORCE_AMAZON_REAL is set
 		if (process.env.NODE_ENV === 'test' && !process.env.FORCE_AMAZON_REAL) {
 			this.config = {
 				region: 'us-east-1',
@@ -48,15 +47,6 @@ class AmazonService extends BaseService {
 
 	async getInventory() {
 		try {
-			console.log('Amazon Auth Debug Info:');
-			console.log('Client ID:', process.env.AMAZON_CLIENT_ID ? 'Set' : 'Not set');
-			console.log('Client Secret:', process.env.AMAZON_CLIENT_SECRET ? 'Set' : 'Not set');
-			console.log('Refresh Token:', process.env.AMAZON_REFRESH_TOKEN ? 'Set' : 'Not set');
-			console.log('AWS Access Key:', process.env.AWS_ACCESS_KEY ? 'Set' : 'Not set');
-			console.log('AWS Secret Key:', process.env.AWS_SECRET_KEY ? 'Set' : 'Not set');
-			console.log('Role ARN:', process.env.AMAZON_ROLE_ARN ? 'Set' : 'Not set');
-			console.log('Region:', process.env.AMAZON_REGION || 'us-east-1');
-
 			const accessToken = await this.getAccessToken();
 
 			const opts = {
@@ -102,13 +92,6 @@ class AmazonService extends BaseService {
 
 	async getAccessToken() {
 		try {
-			// Log the raw values for debugging (but mask sensitive parts)
-			console.log('Debug Auth Parameters:');
-			console.log('Client ID:', config.amazon.clientId?.slice(0, 6) + '...');
-			console.log('Client Secret:', config.amazon.clientSecret?.slice(0, 6) + '...');
-			console.log('Refresh Token Length:', config.amazon.refreshToken?.length);
-
-			// Properly encode each parameter individually
 			const params = {
 				grant_type: 'refresh_token',
 				refresh_token: encodeURIComponent(config.amazon.refreshToken),
@@ -116,7 +99,6 @@ class AmazonService extends BaseService {
 				client_secret: encodeURIComponent(config.amazon.clientSecret)
 			};
 
-			// Make the request with properly encoded parameters
 			const tokenResponse = await axios.post('https://api.amazon.com/auth/o2/token', 
 				Object.entries(params)
 					.map(([key, value]) => `${key}=${value}`)
@@ -129,17 +111,15 @@ class AmazonService extends BaseService {
 			);
 
 			if (!tokenResponse.data || !tokenResponse.data.access_token) {
-				console.error('Token response data:', JSON.stringify(tokenResponse.data, null, 2));
 				throw new Error('Failed to get access token from LWA');
 			}
 
-			console.log('Successfully obtained LWA access token');
 			return tokenResponse.data.access_token;
 		} catch (error) {
 			console.error('Error getting access token:', error.message);
 			if (error.response) {
 				console.error('Response status:', error.response.status);
-				console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+				console.error('Response data:', error.response.data);
 			}
 			throw error;
 		}
@@ -147,20 +127,15 @@ class AmazonService extends BaseService {
 
 	async getAllListings() {
 		try {
-			// Since the SDK doesn't have Reports API methods, we'll make direct HTTP requests
-			console.log('Making direct HTTP requests to Amazon SP-API Reports API...');
-			
-			// Get access token
 			const accessToken = await this.getAccessToken();
 			
 			// 1. Create a report request
-			console.log('Step 1: Creating report request...');
 			const createReportResponse = await axios.post(
 				`${this.baseUrl}/reports/2021-06-30/reports`, 
 				{
 					reportType: 'GET_MERCHANT_LISTINGS_ALL_DATA',
-					marketplaceIds: ['ATVPDKIKX0DER'], // US marketplace
-					dataStartTime: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // Last 30 days
+					marketplaceIds: ['ATVPDKIKX0DER'],
+					dataStartTime: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
 					dataEndTime: new Date().toISOString()
 				},
 				{
@@ -172,17 +147,13 @@ class AmazonService extends BaseService {
 			);
 			
 			const reportId = createReportResponse.data.reportId;
-			console.log('Report requested with ID:', reportId);
 			
 			// 2. Poll for report completion
-			console.log('Step 2: Polling for report completion...');
 			let reportStatus;
 			let attempts = 0;
 			const maxAttempts = 10;
 			
 			do {
-				console.log(`Checking report status (attempt ${attempts + 1}/${maxAttempts})...`);
-				
 				const reportStatusResponse = await axios.get(
 					`${this.baseUrl}/reports/2021-06-30/reports/${reportId}`,
 					{
@@ -193,10 +164,8 @@ class AmazonService extends BaseService {
 				);
 				
 				reportStatus = reportStatusResponse.data;
-				console.log('Report status:', reportStatus.processingStatus);
 				
 				if (reportStatus.processingStatus !== 'DONE') {
-					// Wait 10 seconds before checking again
 					await new Promise(resolve => setTimeout(resolve, 10000));
 				}
 				
@@ -208,7 +177,6 @@ class AmazonService extends BaseService {
 			}
 			
 			// 3. Get report document details
-			console.log('Step 3: Getting report document details...');
 			const reportDocumentId = reportStatus.reportDocumentId;
 			
 			const reportDocResponse = await axios.get(
@@ -221,39 +189,26 @@ class AmazonService extends BaseService {
 			);
 			
 			const reportDocument = reportDocResponse.data;
-			console.log('Report document URL obtained');
-			console.log('Compression format:', reportDocument.compressionAlgorithm);
 			
 			// 4. Download the report
-			console.log('Step 4: Downloading report...');
 			const reportDataResponse = await axios.get(reportDocument.url, {
-				responseType: 'arraybuffer' // Important: use arraybuffer for binary data
+				responseType: 'arraybuffer'
 			});
 			
-			// 5. Decompress if needed and parse the report
-			console.log('Step 5: Processing and parsing report data...');
+			// 5. Process and parse the report
 			let reportData;
 			
-			// Check if the data is compressed
 			if (reportDocument.compressionAlgorithm === 'GZIP') {
-				console.log('Decompressing GZIP data...');
 				const buffer = Buffer.from(reportDataResponse.data);
 				const decompressed = await gunzip(buffer);
 				reportData = decompressed.toString('utf8');
 			} else {
-				// If not compressed, convert ArrayBuffer to string
 				reportData = Buffer.from(reportDataResponse.data).toString('utf8');
 			}
 			
-			console.log('Report data decoded successfully');
-			
 			// Parse the tab-delimited data
 			const lines = reportData.split('\n');
-			console.log(`Found ${lines.length} lines in the report`);
-			
-			// Get headers from the first line
 			const headers = lines[0].split('\t');
-			console.log(`Found ${headers.length} columns in the report`);
 			
 			// Process data rows
 			const results = [];
@@ -272,9 +227,6 @@ class AmazonService extends BaseService {
 				results.push(item);
 			}
 			
-			console.log(`Successfully parsed ${results.length} listings`);
-			
-			// Return all data instead of just a sample
 			return {
 				success: true,
 				message: 'Listings retrieved successfully',
@@ -284,7 +236,7 @@ class AmazonService extends BaseService {
 		} catch (error) {
 			console.error('Error in AmazonService.getAllListings:', error);
 			if (error.response) {
-				console.error('API Error Details:', JSON.stringify(error.response.data, null, 2));
+				console.error('API Error Details:', error.response.data);
 			}
 			throw error;
 		}

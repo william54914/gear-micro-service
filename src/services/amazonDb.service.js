@@ -24,7 +24,7 @@ class AmazonDbService extends BaseService {
     // Validate database config before using
     config.database.validate();
     
-    this.batchSize = 1000; // Process records in batches of 1000 instead of 100
+    this.batchSize = 5000; // Increased from 1000 to 5000 given available RAM
   }
 
   /**
@@ -54,7 +54,7 @@ class AmazonDbService extends BaseService {
       // Process each batch in a separate transaction
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
         const batch = batches[batchIndex];
-        console.log(`Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} records)...`);
+        const progress = Math.round((batchIndex / batches.length) * 100);
         
         // Start a transaction for this batch
         await sequelize.transaction(async (transaction) => {
@@ -91,15 +91,10 @@ class AmazonDbService extends BaseService {
                 continue;
               }
               
-              // Map listing data to our models
               const vitalsData = {
-                // Use seller-sku field for sku
                 sku: sku,
-                // Only set fnsku to sku for FBA items
-                fnsku: listing['fulfillment-channel'] === 'AMAZON_NA' ? sku : null,
-                // Use item-name for name field
+                fnsku: listing['fnsku'] || null,
                 name: listing['item-name'],
-                // Important: Map just the ASIN to the asin field - not product-id
                 asin: listing['asin1'],
                 status: listing['status'] || 'Active'
               };
@@ -148,12 +143,12 @@ class AmazonDbService extends BaseService {
                 itemNote: listing['item-note'],
                 itemCondition: listing['item-condition'],
                 openDate: listing['open-date'] ? new Date(listing['open-date']) : null,
+                // Store ASIN separately from other product IDs
                 asin1: listing['asin1'],
                 asin2: listing['asin2'],
                 asin3: listing['asin3'],
-                // Map product-id to productId correctly
-                // This ensures the actual product ID is stored separately from the ASIN
-                productId: listing['product-id'],
+                // Only store product-id if it's not an ASIN (since ASINs are stored separately)
+                productId: listing['product-id-type'] !== '1' ? listing['product-id'] : null,
                 fulfillmentChannel: listing['fulfillment-channel'],
                 merchantShippingGroup: listing['merchant-shipping-group']
               };
@@ -237,7 +232,9 @@ class AmazonDbService extends BaseService {
           }
         });
         
-        console.log(`Batch ${batchIndex + 1} processed. Success: ${savedCount}, Errors: ${errorCount}`);
+        if ((batchIndex + 1) % 5 === 0 || batchIndex === batches.length - 1) {
+          console.log(`Progress: ${progress}% (${savedCount} processed, ${errorCount} failed)`);
+        }
       }
       
       // Mark items as inactive if they're not in the current import
