@@ -20,6 +20,9 @@ A robust Node.js microservice for managing vendor products, inventory, and marke
 - [Contributing](#contributing)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
+- [Vendor Data Fields Not Currently Implemented](#vendor-data-fields-not-currently-implemented)
+- [Recent Changes - Bell Import Integration](#recent-changes---bell-import-integration)
+- [Data Importers](#data-importers)
 
 ## Features
 
@@ -102,7 +105,8 @@ Gear Microservice ───┼─── OneDrive API
   "api": "^6.1.3",                               // API client utilities
   "aws4": "^1.13.2",                            // AWS request signing
   "basic-ftp": "^5.0.5",                        // FTP client
-  "bcryptjs": "^2.4.3",                         // Password hashing
+  "bcrypt": "^6.0.0",                           // Password hashing (native)
+  "bcryptjs": "^2.4.3",                         // Password hashing (JS implementation)
   "cors": "^2.8.5",                             // Cross-Origin Resource Sharing
   "csv-parser": "^3.2.0",                       // CSV file processing
   "dotenv": "^16.3.1",                          // Environment variables management
@@ -116,7 +120,8 @@ Gear Microservice ───┼─── OneDrive API
   "oas": "^20.11.0",                            // OpenAPI/Swagger support
   "pg": "^8.11.3",                              // PostgreSQL client
   "sequelize": "^6.37.7",                       // ORM for database
-  "ssh2-sftp-client": "^12.0.0"                 // SFTP client
+  "ssh2-sftp-client": "^12.0.0",                // SFTP client
+  "xlsx": "^0.18.5"                             // Excel file processing
 }
 ```
 
@@ -835,5 +840,197 @@ tests/
 - Supertest for HTTP endpoint testing
 - K6 for performance testing
 - Custom utilities for connection testing
-``` 
-</rewritten_file>
+
+## Vendor Integrations
+
+### Supported Vendors
+The system currently supports the following vendors:
+
+#### LS2 Helmets
+- Integration Type: FTP
+- File Format: CSV
+- Update Frequency: Daily
+- Product Types: Helmets, Accessories
+- Status: Active
+
+#### Bell Powersports
+- Integration Type: OneDrive
+- File Format: Excel (.xlsx)
+- Update Frequency: As needed
+- Product Types: Helmets, Accessories
+- Source Path: `Vendor Files/Bell` (uses first Excel file found in folder)
+- Status: Active
+
+#### PartsUnlimited (Placeholder)
+- Integration Type: SFTP
+- File Format: CSV
+- Update Frequency: Daily
+- Status: Not Implemented - Basic structure in place for future integration
+
+#### HelmetHouse (Placeholder)
+- Integration Type: FTP
+- File Format: CSV
+- Update Frequency: Daily
+- Status: Not Implemented - Basic structure in place for future integration
+
+### Import Process
+Each vendor's data is imported through a standardized process:
+1. Vendor record creation/verification
+2. Brand association
+3. Source file detection (first file of correct type in vendor folder)
+4. Product import with standardized field mappings
+5. Distributor information updates
+6. Inventory tracking
+7. Price management
+
+### Vendor Data Fields
+Standard field mappings across vendors:
+- Vendor SKU → vendor_sku
+- Manufacturer Part → mfg_part
+- Product Name/Description → vendor_product_name
+- UPC/EAN → upc
+- MSRP → msrp
+- MAP Price → map_price
+- Cost → cost (in distributor_info)
+- Inventory → inventory_east, inventory_midwest, inventory_west
+
+### Vendor-Specific Fields Not Currently Implemented
+The following vendor-specific fields are available in source data but not currently imported:
+
+#### Bell Powersports
+- MODEL: Product model line (e.g., Broozer, Bullitt)
+- COLOR: Product color information
+
+#### LS2
+- [List any LS2-specific fields]
+
+#### PartsUnlimited
+- [List any PartsUnlimited-specific fields]
+
+### Database Structure
+Vendor data is stored across multiple related tables:
+- vendors: Core vendor information
+- vendor_brands: Brand management
+- vendor_products: Product catalog
+- vendor_product_attributes: Product characteristics
+- vendor_product_dimensions: Physical measurements
+- vendor_product_images: Product media
+- vendor_product_inventory: Stock levels
+- vendor_product_pricing: Pricing information
+- vendor_distributor_info: Distributor-specific data
+- vendor_vehicle_compatibility: Fitment data
+
+## Data Importers
+
+The application includes several data importers that handle different data sources and formats. Each importer is designed to handle large datasets efficiently through batch processing.
+
+### Importer Architecture
+
+```
+BaseImporter
+    ├── BellImporter
+    ├── RestockImporter
+    └── LS2Importer
+```
+
+### Common Features
+- Batch processing with configurable batch sizes
+- Transaction-based database operations
+- Error handling and reporting
+- Progress tracking
+- Vendor and brand validation
+
+### Importer Implementations
+
+#### Bell Importer
+- **Source**: Excel files from OneDrive
+- **Format**: XLSX with specific column mappings
+- **Processing**:
+  - Batch size: 5000 records
+  - Validates vendor_id and brand_id
+  - Creates/updates vendor products
+  - Creates/updates distributor info
+  - Handles product attributes and pricing
+
+#### LS2 Importer
+- **Source**: FTP server
+- **Format**: CSV files
+- **Processing**:
+  - Batch processing for large datasets
+  - Handles multiple file types (products, inventory, pricing)
+  - Updates existing records
+  - Maintains distributor relationships
+
+#### Restock Importer
+- **Source**: OneDrive CSV files
+- **Format**: CSV with specific column mappings
+- **Processing**:
+  - Batch size: 5000 records
+  - Creates/updates restock vitals
+  - Updates restock info and costs
+  - Handles status changes
+
+### Batch Processing
+The importers use an optimized batch processing approach:
+1. **Data Preparation**:
+   - Read source files in chunks
+   - Validate data format and required fields
+   - Transform data to match database schema
+
+2. **Batch Operations**:
+   - Group records into configurable batch sizes
+   - Process each batch in a transaction
+   - Handle errors without failing entire import
+
+3. **Database Operations**:
+   - Use bulk create/update operations
+   - Maintain referential integrity
+   - Handle duplicates through upserts
+
+4. **Progress Tracking**:
+   - Monitor success/failure counts
+   - Report progress percentage
+   - Log errors for review
+
+### Usage Example
+```javascript
+// Bell Importer
+const bellImporter = new BellImporter();
+bellImporter.vendor_id = vendorId;
+bellImporter.brand_id = brandId;
+const result = await bellImporter.importFromOneDrive();
+
+// Results format
+{
+  total: 240,      // Total records processed
+  success: 240,    // Successfully imported
+  failed: 0        // Failed records
+}
+```
+
+### Error Handling
+- Individual record failures don't stop the import
+- Errors are collected and reported
+- Failed records can be reviewed and retried
+- Transaction rollback on batch failures
+
+### Best Practices
+1. **Memory Management**:
+   - Use appropriate batch sizes
+   - Process files in chunks
+   - Clean up temporary data
+
+2. **Data Validation**:
+   - Validate required fields
+   - Check data types and formats
+   - Verify foreign key relationships
+
+3. **Performance**:
+   - Use bulk operations
+   - Minimize database transactions
+   - Handle large datasets efficiently
+
+4. **Monitoring**:
+   - Track progress
+   - Log errors
+   - Report statistics

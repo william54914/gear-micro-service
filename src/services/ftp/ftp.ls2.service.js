@@ -32,6 +32,7 @@ class LS2FtpService extends BaseService {
     this.tmpDir = path.join(__dirname, '../../../tmp');
     this.vendorName = "LS2 Helmets";
     this.inventoryFileName = "FlynCycle Inventory.csv";
+    this.batchSize = 5000;
     
     if (!fs.existsSync(this.tmpDir)) {
       fs.mkdirSync(this.tmpDir, { recursive: true });
@@ -159,199 +160,165 @@ class LS2FtpService extends BaseService {
   async processCSVFile(filePath) {
     try {
       const vendor = await this.getOrCreateVendor();
-      const transaction = await models.sequelize.transaction();
-      
+      const records = [];
+      let isFirstRow = true;
+
+      // First, collect all records from CSV
+      await new Promise((resolve, reject) => {
+        fs.createReadStream(filePath)
+          .pipe(csv())
+          .on('data', (data) => {
+            if (data.PartNumber) {
+              records.push(data);
+            }
+          })
+          .on('end', resolve)
+          .on('error', reject);
+      });
+
+      console.log(`Processing ${records.length} records from LS2 CSV file...`);
+
+      // Process in batches
+      const batches = [];
+      for (let i = 0; i < records.length; i += this.batchSize) {
+        batches.push(records.slice(i, i + this.batchSize));
+      }
+
+      const results = {
+        products: { created: 0, updated: 0, deactivated: 0 },
+        brands: { created: 0, updated: 0, deactivated: 0 },
+        distributor_info: { created: 0, updated: 0, deactivated: 0 }
+      };
+
+      // Create or get the LS2 brand first, outside the batch processing
+      let ls2Brand;
       try {
-        const brandRecords = [];
-        const productRecords = [];
-        const attributeRecords = [];
-        const imageRecords = [];
-        const inventoryRecords = [];
-        const pricingRecords = [];
-        const dimensionRecords = [];
-        const distributorRecords = [];
+        [ls2Brand] = await models.VendorBrand.findOrCreate({
+          where: { 
+            vendorId: vendor.vendorId,
+            brandName: 'LS2'
+          },
+          defaults: {
+            brandCode: 'LS2',
+            brandName: 'LS2',
+            brandAlt1: 'LS2 Helmets',
+            active: true,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }
+        });
 
-        const currentBrands = new Set();
-        const currentProducts = new Set();
-        const currentAttributes = new Set();
-        const currentImages = new Set();
-        const currentInventories = new Set();
-        const currentPricing = new Set();
-        const currentDimensions = new Set();
+        if (!ls2Brand.isNewRecord) {
+          await ls2Brand.update({
+            brandAlt1: 'LS2 Helmets',
+            active: true,
+            updatedAt: new Date()
+          });
+          results.brands.updated++;
+        } else {
+          results.brands.created++;
+        }
+      } catch (error) {
+        console.error('Error creating/updating LS2 brand:', error);
+        throw error;
+      }
 
-        let isFirstRow = true;
+      // Process each batch
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        const progress = Math.round((batchIndex / batches.length) * 100);
+        
+        try {
+          await models.sequelize.transaction(async (transaction) => {
+            const productRecords = [];
+            const distributorRecords = [];
 
-        return new Promise((resolve, reject) => {
-          const results = {
-            products: { created: 0, updated: 0, deactivated: 0 },
-            brands: { created: 0, updated: 0, deactivated: 0 },
-            attributes: { created: 0, updated: 0, deactivated: 0 },
-            images: { created: 0, updated: 0, deactivated: 0 },
-            inventory: { created: 0, updated: 0, deactivated: 0 },
-            pricing: { created: 0, updated: 0, deactivated: 0 },
-            dimensions: { created: 0, updated: 0, deactivated: 0 },
-            distributor_info: { created: 0, updated: 0, deactivated: 0 }
-          };
-          
-          fs.createReadStream(filePath)
-            .pipe(csv())
-            .on('data', (data) => {
-              if (!currentBrands.has('LS2')) {
-                  currentBrands.add('LS2');
-                  brandRecords.push({
-                      brandName: 'LS2',
-                      brandCode: 'LS2',
-                      brandAlt1: 'LS2 Helmets',
-                      vendorId: vendor.vendorId
-                  });
-              }
-
+            // Prepare batch records
+            for (const data of batch) {
               if (data.PartNumber) {
-                currentProducts.add(data.PartNumber);
+                const partNumber = data.PartNumber.toString();
                 productRecords.push({
-                  itemId: data.PartNumber,
-                  brandName: 'LS2',
+                  itemId: partNumber,
+                  brandId: ls2Brand.brandId,
                   productType: data.TYPE || null,
-                  mfgPart: data.PartNumber,
+                  mfgPart: partNumber,
+                  vendorSku: partNumber,
                   title: data['Item Description'] || null,
+                  vendorProductName: data['Item Description'] || `LS2 Product ${partNumber}`,
                   upc: data['EAN/UPC'] || null,
                   description1: data['Item Description'] || null,
                   discontinued: data['Is Discontinued']?.toUpperCase() === 'T',
                   vendorId: vendor.vendorId,
                   msrp: parseFloat(data['RetailPrice'] || '0'),
-                  mapPrice: parseFloat(data['MAP Price'] || '0')
+                  mapPrice: parseFloat(data['MAP Price'] || '0'),
+                  active: true,
+                  updatedAt: new Date()
                 });
 
                 distributorRecords.push({
-                  distributorPart: data.PartNumber,
-                  manufacturerPart: data.PartNumber,
+                  distributorPart: partNumber,
+                  manufacturerPart: partNumber,
                   vendorId: vendor.vendorId,
                   cost: parseFloat(data['Dealer Cost'] || '0'),
                   inventoryEast: parseInt(data['In Stock'] || '0', 10),
                   inventoryMidwest: 0,
                   inventoryWest: 0,
                   totalInventory: parseInt(data['In Stock'] || '0', 10),
-                  shippingCost: 0
+                  shippingCost: 0,
+                  active: true,
+                  updatedAt: new Date()
                 });
               }
-            })
-            .on('end', async () => {
-              try {
-                const existingBrands = await models.VendorBrand.findAll({
-                  where: { vendorId: vendor.vendorId },
-                  transaction
-                });
+            }
 
-                const brandMap = new Map(existingBrands.map(b => [b.brandName, b]));
-                let ls2Brand;
-
-                for (const brandRecord of brandRecords) {
-                  if (brandMap.has(brandRecord.brandName)) {
-                    await models.VendorBrand.update(
-                      {
-                        brandAlt1: brandRecord.brandAlt1,
-                        active: true,
-                        updatedAt: new Date()
-                      },
-                      {
-                        where: { brandId: brandMap.get(brandRecord.brandName).brandId },
-                        transaction
-                      }
-                    );
-                    ls2Brand = brandMap.get(brandRecord.brandName);
-                    results.brands.updated++;
-                  } else {
-                    ls2Brand = await models.VendorBrand.create({
-                      ...brandRecord,
-                      active: true,
-                      createdAt: new Date(),
-                      updatedAt: new Date()
-                    }, { transaction });
-                    results.brands.created++;
-                  }
-                }
-
-                const existingProducts = await models.VendorProduct.findAll({
-                  where: { vendorId: vendor.vendorId },
-                  transaction
-                });
-
-                const productMap = new Map(existingProducts.map(p => [p.itemId, p]));
-
-                for (const productRecord of productRecords) {
-                  const productData = {
-                    ...productRecord,
-                    brandId: ls2Brand.brandId,
-                    vendorSku: productRecord.itemId,
-                    vendorProductName: productRecord.title || `LS2 Product ${productRecord.itemId}`,
-                    active: true,
-                    updatedAt: new Date()
-                  };
-
-                  if (productMap.has(productRecord.itemId)) {
-                    await models.VendorProduct.update(
-                      productData,
-                      {
-                        where: { productId: productMap.get(productRecord.itemId).productId },
-                        transaction
-                      }
-                    );
-                    results.products.updated++;
-                  } else {
-                    await models.VendorProduct.create({
-                      ...productData,
-                      createdAt: new Date()
-                    }, { transaction });
-                    results.products.created++;
-                  }
-                }
-
-                for (const distributorRecord of distributorRecords) {
-                  const existingDistInfo = await models.VendorDistributorInfo.findOne({
-                    where: { manufacturerPart: distributorRecord.manufacturerPart },
-                    transaction
-                  });
-
-                  if (existingDistInfo) {
-                    await models.VendorDistributorInfo.update(
-                      {
-                        ...distributorRecord,
-                        active: true,
-                        updatedAt: new Date()
-                      },
-                      {
-                        where: { distributorInfoId: existingDistInfo.distributorInfoId },
-                        transaction
-                      }
-                    );
-                    results.distributor_info.updated++;
-                  } else {
-                    await models.VendorDistributorInfo.create({
-                      ...distributorRecord,
-                      active: true,
-                      createdAt: new Date(),
-                      updatedAt: new Date()
-                    }, { transaction });
-                    results.distributor_info.created++;
-                  }
-                }
-
-                await transaction.commit();
-                resolve(results);
-              } catch (error) {
-                await transaction.rollback();
-                reject(error);
-              }
-            })
-            .on('error', async (error) => {
-              await transaction.rollback();
-              reject(error);
+            // Bulk create/update products
+            await models.VendorProduct.bulkCreate(productRecords, {
+              updateOnDuplicate: [
+                'brandId',
+                'productType',
+                'title',
+                'vendorProductName',
+                'upc',
+                'description1',
+                'discontinued',
+                'msrp',
+                'mapPrice',
+                'active',
+                'updatedAt'
+              ],
+              transaction
             });
-        });
-      } catch (error) {
-        await transaction.rollback();
-        throw error;
+
+            // Bulk create/update distributor info
+            await models.VendorDistributorInfo.bulkCreate(distributorRecords, {
+              updateOnDuplicate: [
+                'cost',
+                'inventoryEast',
+                'inventoryMidwest',
+                'inventoryWest',
+                'totalInventory',
+                'shippingCost',
+                'active',
+                'updatedAt'
+              ],
+              transaction
+            });
+
+            results.products.created += productRecords.length;
+            results.distributor_info.created += distributorRecords.length;
+          });
+
+          // Log progress every 20% or at the end
+          if ((batchIndex + 1) % Math.max(1, Math.floor(batches.length / 5)) === 0 || batchIndex === batches.length - 1) {
+            console.log(`Progress: ${progress}% (${results.products.created} products processed)`);
+          }
+        } catch (error) {
+          console.error(`Error processing batch ${batchIndex}:`, error);
+          // Continue with next batch despite error
+        }
       }
+
+      return results;
     } catch (error) {
       console.error('Error processing LS2 CSV file:', error);
       throw error;

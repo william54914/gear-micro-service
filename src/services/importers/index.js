@@ -1,10 +1,10 @@
 const RestockImporter = require('./restock.importer');
 const BaseImporter = require('./importer.base');
-const AmazonImporter = require('./amazon.importer');
+const BellImporter = require('./bell.importer');
 
 module.exports = {
   RestockImporter,
   BaseImporter,
-  AmazonImporter
+  BellImporter
   // Add more importers here as they are created
 }; 

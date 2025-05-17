@@ -12,7 +12,6 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 class RestockImporter extends EventEmitter {
   constructor() {
     super();
-    this.filename = 'restock_products.csv';
     this.folderPath = 'Inventory Management/Restock Products';
     this.batchSize = 5000;
     this.markMissingAsInactive = true;
@@ -37,9 +36,8 @@ class RestockImporter extends EventEmitter {
     };
   }
 
-  setSource(folderName, filename) {
+  setSource(folderName) {
     this.folderPath = folderName;
-    this.filename = filename;
     return this;
   }
 
@@ -147,12 +145,19 @@ class RestockImporter extends EventEmitter {
         throw new Error('Failed to list files in folder');
       }
       
-      const file = files.find(f => f.name.toLowerCase() === this.filename.toLowerCase() && f.type !== 'folder');
-      if (!file || !file.id) {
-        throw new Error(`File not found: ${this.filename}`);
+      // Find the first CSV file in the folder
+      const csvFile = files.find(f => 
+        f.name.toLowerCase().endsWith('.csv') && 
+        f.type !== 'folder'
+      );
+      
+      if (!csvFile) {
+        throw new Error('No CSV files found in folder');
       }
       
-      const content = await this.oneDrive.getFileContent(file.id);
+      console.log(`Found CSV file: ${csvFile.name}`);
+      
+      const content = await this.oneDrive.getFileContent(csvFile.id);
       if (!content) {
         throw new Error('Failed to download file content');
       }
