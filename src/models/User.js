@@ -13,22 +13,37 @@ class User extends BaseModel {
         autoIncrement: true,
         field: 'user_id'
       },
+      username: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true
+      },
       email: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true,
         validate: {
-          isEmail: true,
-          notEmpty: true
+          isEmail: true
         }
       },
-      password: {
+      passwordHash: {
         type: DataTypes.STRING,
         allowNull: false,
-        validate: {
-          notEmpty: true,
-          len: [6, 100]
-        }
+        field: 'password_hash'
+      },
+      active: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW,
+        field: 'created_at'
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW,
+        field: 'updated_at'
       },
       firstName: {
         type: DataTypes.STRING,
@@ -144,6 +159,14 @@ class User extends BaseModel {
     delete values.passwordResetToken;
     delete values.passwordResetExpires;
     return values;
+  }
+
+  static associate(models) {
+    this.belongsToMany(models.UserRole, {
+      through: models.UserPermission,
+      foreignKey: 'userId',
+      as: 'roles'
+    });
   }
 }
 

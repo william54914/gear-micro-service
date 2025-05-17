@@ -73,13 +73,6 @@ class VendorProduct extends BaseModel {
           min: 0
         }
       },
-      cost: {
-        type: DataTypes.DECIMAL(10, 2),
-        allowNull: true,
-        validate: {
-          min: 0
-        }
-      },
       weight: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
@@ -127,15 +120,6 @@ class VendorProduct extends BaseModel {
       foreignKey: 'vendorProductId',
       as: 'compatibility'
     });
-  }
-
-  /**
-   * Get profit margin
-   * @returns {number} Profit margin percentage
-   */
-  getProfitMargin() {
-    if (!this.msrp || !this.cost) return 0;
-    return ((this.msrp - this.cost) / this.msrp) * 100;
   }
 
   /**

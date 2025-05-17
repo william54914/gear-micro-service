@@ -1,5 +1,6 @@
 const sequelize = require('../config/database');
 const path = require('path');
+const bcrypt = require('bcrypt');
 
 // Set required environment variables
 process.env.NODE_ENV = 'production';
@@ -13,27 +14,107 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 // Import the models and services
 const { RestockVitals, RestockInfo, RestockCost, 
         Vendor, VendorBrand, VendorProduct, VendorDistributorInfo,
-        AmazonVitals, AmazonInfo, AmazonPrice, AmazonQuantity } = require('../models');
+        AmazonVitals, AmazonInfo, AmazonPrice, AmazonQuantity,
+        User, UserRole, UserPermission } = require('../models');
 const RestockImporter = require('../services/importers/restock.importer');
 const amazonService = require('../services/amazon.service');
 const amazonDbService = require('../services/amazonDb.service');
 const ls2Service = require('../services/ftp/ftp.ls2.service');
 
-function logMemoryUsage() {
-    const used = process.memoryUsage();
-    console.log('\nMemory Usage:');
-    for (let key in used) {
-        console.log(`${key}: ${Math.round(used[key] / 1024 / 1024 * 100) / 100} MB`);
+async function createDefaultUsers() {
+    console.log('Creating default users...');
+    try {
+        // Create default roles
+        const roles = ['admin', 'manager', 'user'];
+        const createdRoles = {};
+        
+        for (const roleName of roles) {
+            const [role] = await UserRole.findOrCreate({
+                where: { roleName },
+                defaults: { roleName, active: true }
+            });
+            createdRoles[roleName] = role;
+        }
+
+        // Create default users
+        const defaultUsers = [
+            {
+                username: 'admin',
+                email: 'admin@gearhubone.com',
+                password: 'admin',
+                firstName: 'Admin',
+                lastName: 'User',
+                role: 'admin'
+            },
+            {
+                username: 'manager',
+                email: 'manager@gearhubone.com',
+                password: 'manager',
+                firstName: 'Manager',
+                lastName: 'User',
+                role: 'manager'
+            },
+            {
+                username: 'user',
+                email: 'user@gearhubone.com',
+                password: 'user',
+                firstName: 'Regular',
+                lastName: 'User',
+                role: 'user'
+            }
+        ];
+
+        for (const userData of defaultUsers) {
+            // Hash password
+            const passwordHash = await bcrypt.hash(userData.password, 10);
+
+            // Create or update user
+            const [user] = await User.findOrCreate({
+                where: { username: userData.username },
+                defaults: {
+                    username: userData.username,
+                    email: userData.email,
+                    passwordHash,
+                    firstName: userData.firstName,
+                    lastName: userData.lastName,
+                    active: true
+                }
+            });
+
+            // Assign role
+            await UserPermission.findOrCreate({
+                where: {
+                    userId: user.userId,
+                    roleId: createdRoles[userData.role].roleId
+                },
+                defaults: {
+                    userId: user.userId,
+                    roleId: createdRoles[userData.role].roleId,
+                    active: true
+                }
+            });
+
+            console.log(`Created/Updated user: ${userData.username} with role: ${userData.role}`);
+        }
+
+        console.log('Default users created successfully');
+    } catch (error) {
+        console.error('Error creating default users:', error);
+        throw error;
     }
 }
 
 async function resetAndImport() {
-    console.log('\nStarting database reset and import process...');
-    logMemoryUsage();
+    console.log('Starting database reset and import process...');
     
     try {
         // Drop all tables in the correct order (child tables first)
-        console.log('\nDropping existing tables...');
+        console.log('Dropping existing tables...');
+        
+        // Drop user-related tables
+        await sequelize.query('DROP TABLE IF EXISTS user_permissions CASCADE');
+        await sequelize.query('DROP TABLE IF EXISTS user_roles CASCADE');
+        await sequelize.query('DROP TABLE IF EXISTS users CASCADE');
         
         // Drop Amazon child tables
         await sequelize.query('DROP TABLE IF EXISTS amazon_price CASCADE');
@@ -51,11 +132,14 @@ async function resetAndImport() {
         await sequelize.query('DROP TABLE IF EXISTS restock_costs CASCADE');
         await sequelize.query('DROP TABLE IF EXISTS restock_info CASCADE');
         await sequelize.query('DROP TABLE IF EXISTS restock_vitals CASCADE');
-        
-        console.log('Tables dropped successfully');
 
         // Create tables in correct order (parent tables first)
-        console.log('\nCreating tables...');
+        console.log('Creating tables...');
+        
+        // Create user tables
+        await UserRole.sync();
+        await User.sync();
+        await UserPermission.sync();
         
         // Create Restock tables
         await RestockVitals.sync();
@@ -65,7 +149,7 @@ async function resetAndImport() {
         // Create LS2/Vendor tables in correct order
         await Vendor.sync();
         await VendorBrand.sync();
-        await VendorProduct.sync({ alter: true }); // Add alter:true to ensure mfg_part is unique
+        await VendorProduct.sync({ alter: true });
         await VendorDistributorInfo.sync();
         
         // Create Amazon tables
@@ -73,43 +157,30 @@ async function resetAndImport() {
         await AmazonInfo.sync();
         await AmazonPrice.sync();
         await AmazonQuantity.sync();
-        
-        console.log('Tables created successfully');
-        logMemoryUsage();
+
+        // Create default users
+        await createDefaultUsers();
 
         // Import Restock data
-        console.log('\nImporting Restock data...');
+        console.log('Importing Restock data...');
         const restockImporter = new RestockImporter();
-        console.log('\nRestock Importer Configuration:');
-        console.log('Folder Path:', restockImporter.folderPath);
-        console.log('File Name:', restockImporter.filename);
-        console.log('Batch Size:', restockImporter.batchSize);
-        
         const restockResults = await restockImporter.importFromOneDrive();
-        logMemoryUsage();
         
-        console.log('\nRestock import results:', {
+        console.log('Restock import completed:', {
             total: restockResults.total,
             success: restockResults.success,
-            failed: restockResults.failed,
-            errorCount: restockResults.errors.length
+            failed: restockResults.failed
         });
 
         if (restockResults.errors.length > 0) {
-            console.log('\nRestock import errors:');
-            restockResults.errors.slice(0, 5).forEach((error, i) => {
-                console.log(`\nError ${i + 1}:`);
-                console.log('Record:', error.record);
-                console.log('Error:', error.error);
-            });
+            console.error('Restock import errors:', restockResults.errors.length);
         }
 
         // Import LS2 data
-        console.log('\nImporting LS2 data...');
+        console.log('Importing LS2 data...');
         const ls2Results = await ls2Service.importAllFiles();
-        console.log('\nLS2 import results:', {
+        console.log('LS2 import completed:', {
             totalFiles: ls2Results.totalFiles,
-            processedFiles: ls2Results.processed.length,
             successfulFiles: ls2Results.processed.filter(r => r.success).length,
             failedFiles: ls2Results.processed.filter(r => !r.success).length
         });
@@ -117,77 +188,47 @@ async function resetAndImport() {
         // Show any LS2 errors
         const ls2Errors = ls2Results.processed.filter(r => !r.success);
         if (ls2Errors.length > 0) {
-            console.log('\nLS2 import errors:');
-            ls2Errors.forEach((error, i) => {
-                console.log(`\nError in file ${error.file}:`, error.error);
-            });
+            console.error('LS2 import errors:', ls2Errors.length);
         }
 
         // Import Amazon data
-        console.log('\nStarting Amazon import...');
-        console.log('Amazon Environment Variables:');
-        console.log('AMAZON_CLIENT_ID:', process.env.AMAZON_CLIENT_ID?.substring(0, 5) + '...');
-        console.log('AMAZON_CLIENT_SECRET:', process.env.AMAZON_CLIENT_SECRET?.substring(0, 5) + '...');
-        console.log('AMAZON_REFRESH_TOKEN:', process.env.AMAZON_REFRESH_TOKEN?.substring(0, 5) + '...');
-        console.log('AWS_ACCESS_KEY:', process.env.AWS_ACCESS_KEY?.substring(0, 5) + '...');
-        console.log('AWS_SECRET_KEY:', process.env.AWS_SECRET_KEY?.substring(0, 5) + '...');
-        console.log('AWS_REGION:', process.env.AWS_REGION || 'us-east-1');
+        console.log('Starting Amazon import...');
         
         try {
             // Get listings from Amazon API
-            console.log('\nFetching listings from Amazon SP-API...');
+            console.log('Fetching listings from Amazon SP-API...');
             const amazonListings = await amazonService.getAllListings();
-            console.log('\nAmazon API results:', {
-                total: amazonListings.count,
-                success: amazonListings.success
-            });
-
+            
             if (!amazonListings.success) {
-                console.error('\nError fetching Amazon listings:', amazonListings.message);
+                console.error('Error fetching Amazon listings:', amazonListings.message);
             } else {
-                // Log a sample of the data
-                if (amazonListings.data && amazonListings.data.length > 0) {
-                    console.log('\nSample Amazon listing data (first item):');
-                    console.log(JSON.stringify(amazonListings.data[0], null, 2));
-                    console.log('\nAvailable fields:', Object.keys(amazonListings.data[0]).join(', '));
-                }
-                
                 // Save listings to database
-                console.log('\nSaving Amazon listings to database...');
+                console.log('Saving Amazon listings to database...');
                 const saveResults = await amazonDbService.saveListings(amazonListings.data);
-                console.log('Database save results:', {
-                    success: saveResults.success,
+                console.log('Amazon listings saved:', {
                     savedCount: saveResults.savedCount,
-                    errorCount: saveResults.errorCount,
-                    message: saveResults.message
+                    errorCount: saveResults.errorCount
                 });
             }
 
             // Get Amazon inventory
-            console.log('\nFetching Amazon inventory...');
+            console.log('Fetching Amazon inventory...');
             const amazonInventory = await amazonService.getInventory();
             console.log('Amazon inventory fetched:', {
-                inventorySummaries: amazonInventory.payload?.inventorySummaries?.length || 0
+                count: amazonInventory.payload?.inventorySummaries?.length || 0
             });
         } catch (error) {
-            console.error('\nError during Amazon import:', error);
+            console.error('Error during Amazon import:', error);
             if (error.response) {
                 console.error('Response status:', error.response.status);
                 console.error('Response data:', error.response.data);
             }
-            console.error('Stack trace:', error.stack);
         }
 
-        // TODO: Save inventory data to database
-        // This will require implementing inventory save functionality in amazonDb.service.js
-
-        console.log('\nAll imports completed successfully!');
-        logMemoryUsage();
+        console.log('All imports completed successfully!');
         process.exit(0);
     } catch (error) {
-        console.error('\nError during import process:', error);
-        console.error('Stack trace:', error.stack);
-        logMemoryUsage();
+        console.error('Error during import process:', error);
         process.exit(1);
     }
 }
