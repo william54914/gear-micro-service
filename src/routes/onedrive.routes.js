@@ -1,7 +1,9 @@
 const express = require('express');
 const OneDriveClient = require('../services/onedrive.service');
 const importController = require('../controllers/import.controller');
+const { BellImporter } = require('../services/importers');
 const sequelize = require('../config/database');
+const { Vendor, VendorBrand } = require('../models');
 const router = express.Router();
 
 /**
@@ -163,6 +165,63 @@ SKU123,FNSKU123,Test Product 1,B0123456,Active,MSKU123,Test Supplier,12345678901
     console.error('Error testing smaller import:', error);
     res.status(500).json({
       error: 'Failed to run smaller test import',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * @route GET /api/onedrive/import-bell-prices
+ * @description Import Bell price sheet from OneDrive
+ * @access Private
+ */
+router.get('/import-bell-prices', async (req, res) => {
+  try {
+    // Get folder path and file name from query parameters or default values
+    const folderPath = req.query.path || 'vendor files/Bell';
+    const fileName = req.query.file || 'BellPriceSheet.xlsx';
+    
+    // Get Bell vendor and brand IDs
+    const [bellVendor] = await Vendor.findOrCreate({
+      where: { vendorName: 'Bell' },
+      defaults: {
+        vendorName: 'Bell',
+        vendorCode: 'BELL',
+        active: true
+      }
+    });
+
+    const [bellBrand] = await VendorBrand.findOrCreate({
+      where: { 
+        brandName: 'Bell',
+        vendorId: bellVendor.vendorId
+      },
+      defaults: {
+        brandName: 'Bell',
+        brandCode: 'BELL',
+        vendorId: bellVendor.vendorId,
+        active: true
+      }
+    });
+    
+    const bellImporter = new BellImporter();
+    bellImporter.vendor_id = bellVendor.vendorId;
+    bellImporter.brand_id = bellBrand.brandId;
+    bellImporter.setSource(folderPath, fileName);
+    
+    // Import data
+    const result = await bellImporter.importFromOneDrive();
+    
+    res.status(200).json({
+      message: `Successfully imported ${result.success} Bell price records`,
+      failed: result.failed,
+      total: result.total,
+      errors: result.errors
+    });
+  } catch (error) {
+    console.error('Error importing Bell price data:', error);
+    res.status(500).json({
+      error: 'Failed to import Bell price data',
       details: error.message
     });
   }

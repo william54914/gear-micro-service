@@ -16,7 +16,7 @@ const { RestockVitals, RestockInfo, RestockCost,
         Vendor, VendorBrand, VendorProduct, VendorDistributorInfo,
         AmazonVitals, AmazonInfo, AmazonPrice, AmazonQuantity,
         User, UserRole, UserPermission } = require('../models');
-const RestockImporter = require('../services/importers/restock.importer');
+const { RestockImporter, BellImporter } = require('../services/importers');
 const amazonService = require('../services/amazon.service');
 const amazonDbService = require('../services/amazonDb.service');
 const ls2Service = require('../services/ftp/ftp.ls2.service');
@@ -161,39 +161,107 @@ async function resetAndImport() {
         // Create default users
         await createDefaultUsers();
 
+        // Create Bell vendor and brand in a single transaction
+        console.log('Creating Bell vendor and brand...');
+        const transaction = await sequelize.transaction();
+        
+        try {
+            // Create Bell vendor
+            const [bellVendor] = await Vendor.findOrCreate({
+                where: { vendorName: 'Bell' },
+                defaults: {
+                    vendorName: 'Bell',
+                    vendorCode: 'BELL',
+                    active: true
+                },
+                transaction
+            });
+            console.log('Bell vendor created/found with ID:', bellVendor.vendorId);
+
+            // Create Bell brand
+            const [bellBrand] = await VendorBrand.findOrCreate({
+                where: { 
+                    brandName: 'Bell',
+                    vendorId: bellVendor.vendorId
+                },
+                defaults: {
+                    brandName: 'Bell',
+                    brandCode: 'BELL',
+                    vendorId: bellVendor.vendorId,
+                    active: true
+                },
+                transaction
+            });
+            console.log('Bell brand created with ID:', bellBrand.brandId);
+
+            await transaction.commit();
+            console.log('Bell vendor and brand setup completed successfully');
+
+            // Import Bell price sheet
+            console.log('Importing Bell price sheet...');
+            const bellImporter = new BellImporter();
+            bellImporter.vendor_id = bellVendor.vendorId;
+            bellImporter.brand_id = bellBrand.brandId;
+            const bellResults = await bellImporter.importFromOneDrive();
+            
+            console.log('Bell import completed:', {
+                total: bellResults.total,
+                success: bellResults.success,
+                failed: bellResults.failed
+            });
+
+            if (bellResults.errors && bellResults.errors.length > 0) {
+                console.error('Bell import errors:', bellResults.errors);
+            }
+
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Error setting up Bell vendor/brand:', error);
+            throw error;
+        }
+
         // Import Restock data
         console.log('Importing Restock data...');
-        const restockImporter = new RestockImporter();
-        const restockResults = await restockImporter.importFromOneDrive();
-        
-        console.log('Restock import completed:', {
-            total: restockResults.total,
-            success: restockResults.success,
-            failed: restockResults.failed
-        });
+        try {
+            const restockImporter = new RestockImporter();
+            const restockResults = await restockImporter.importFromOneDrive();
+            
+            console.log('Restock import completed:', {
+                total: restockResults.total,
+                success: restockResults.success,
+                failed: restockResults.failed
+            });
 
-        if (restockResults.errors.length > 0) {
-            console.error('Restock import errors:', restockResults.errors.length);
+            if (restockResults.errors && restockResults.errors.length > 0) {
+                console.error('Restock import errors:', restockResults.errors.length);
+            }
+        } catch (error) {
+            console.error('Error during Restock import:', error);
+            // Continue with other imports
         }
 
         // Import LS2 data
         console.log('Importing LS2 data...');
-        const ls2Results = await ls2Service.importAllFiles();
-        console.log('LS2 import completed:', {
-            totalFiles: ls2Results.totalFiles,
-            successfulFiles: ls2Results.processed.filter(r => r.success).length,
-            failedFiles: ls2Results.processed.filter(r => !r.success).length
-        });
+        try {
+            const ls2Results = await ls2Service.importAllFiles();
+            console.log('LS2 import completed:', {
+                totalFiles: ls2Results.totalFiles,
+                successfulFiles: ls2Results.processed.filter(r => r.success).length,
+                failedFiles: ls2Results.processed.filter(r => !r.success).length
+            });
 
-        // Show any LS2 errors
-        const ls2Errors = ls2Results.processed.filter(r => !r.success);
-        if (ls2Errors.length > 0) {
-            console.error('LS2 import errors:', ls2Errors.length);
+            // Show any LS2 errors
+            const ls2Errors = ls2Results.processed.filter(r => !r.success);
+            if (ls2Errors.length > 0) {
+                console.error('LS2 import errors:', ls2Errors.length);
+            }
+        } catch (error) {
+            console.error('Error during LS2 import:', error);
+            // Continue with other imports
         }
 
         // Import Amazon data
         console.log('Starting Amazon import...');
-        
         try {
             // Get listings from Amazon API
             console.log('Fetching listings from Amazon SP-API...');
@@ -223,9 +291,10 @@ async function resetAndImport() {
                 console.error('Response status:', error.response.status);
                 console.error('Response data:', error.response.data);
             }
+            // Continue with completion
         }
 
-        console.log('All imports completed successfully!');
+        console.log('All imports completed!');
         process.exit(0);
     } catch (error) {
         console.error('Error during import process:', error);

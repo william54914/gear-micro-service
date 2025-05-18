@@ -164,14 +164,15 @@ class OneDriveService extends BaseService {
         throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
       }
 
-      const content = await response.text();
-      return content;
+      // Handle Excel files as binary
+      if (fileInfo.name.endsWith('.xlsx') || fileInfo.name.endsWith('.xls')) {
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+      }
+
+      return await response.text();
     } catch (error) {
       console.error('Failed to get file content:', error);
-      if (error.response) {
-        console.error('Response status:', error.response.status);
-        console.error('Response data:', error.response.data);
-      }
       throw error;
     }
   }
