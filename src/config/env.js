@@ -72,6 +72,14 @@ const requiredVariables = {
         throw new Error('ONEDRIVE_USER_EMAIL must be a valid email address');
       }
     }
+  },
+  helmethouse: {
+    variables: ['HELMETHOUSE_FTP_HOST', 'HELMETHOUSE_FTP_USER', 'HELMETHOUSE_FTP_PASS', 'HELMETHOUSE_FTP_PORT'],
+    validate: (env) => {
+      if (!isValidPort(env.HELMETHOUSE_FTP_PORT)) {
+        throw new Error('HELMETHOUSE_FTP_PORT must be a valid port number between 1 and 65535');
+      }
+    }
   }
 };
 
@@ -183,6 +191,16 @@ module.exports = (
     password: process.env.LS2_FTP_PASS,
     port: process.env.LS2_FTP_PORT,
     validate: () => validateEnv('ls2')
+  },
+
+  // Helmet House FTP config
+  helmethouse: {
+    host: process.env.HELMETHOUSE_FTP_HOST,
+    user: process.env.HELMETHOUSE_FTP_USER,
+    password: process.env.HELMETHOUSE_FTP_PASS,
+    port: process.env.HELMETHOUSE_FTP_PORT,
+    secure: process.env.HELMETHOUSE_FTP_SECURE === 'true',
+    validate: () => validateEnv('helmethouse')
   },
 
   // OneDrive config
