@@ -80,6 +80,14 @@ const requiredVariables = {
         throw new Error('HELMETHOUSE_FTP_PORT must be a valid port number between 1 and 65535');
       }
     }
+  },
+  automaticdistributors: {
+    variables: ['AUTODIST_FTP_HOST', 'AUTODIST_FTP_USER', 'AUTODIST_FTP_PASS', 'AUTODIST_FTP_PORT'],
+    validate: (env) => {
+      if (!isValidPort(env.AUTODIST_FTP_PORT)) {
+        throw new Error('AUTODIST_FTP_PORT must be a valid port number between 1 and 65535');
+      }
+    }
   }
 };
 
@@ -210,6 +218,16 @@ module.exports = (
     tenantId: process.env.ONEDRIVE_TENANT_ID,
     userEmail: process.env.ONEDRIVE_USER_EMAIL,
     validate: () => validateEnv('onedrive')
+  },
+
+  // Automatic Distributors FTP config
+  automaticdistributors: {
+    host: process.env.AUTODIST_FTP_HOST,
+    user: process.env.AUTODIST_FTP_USER,
+    password: process.env.AUTODIST_FTP_PASS,
+    port: process.env.AUTODIST_FTP_PORT,
+    secure: process.env.AUTODIST_FTP_SECURE === 'true',
+    validate: () => validateEnv('automaticdistributors')
   },
 
   // Environment info
