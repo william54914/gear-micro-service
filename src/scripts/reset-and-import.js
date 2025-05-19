@@ -7,6 +7,7 @@ process.env.NODE_ENV = 'production';
 process.env.FORCE_ONEDRIVE_REAL = '1';
 process.env.FORCE_AMAZON_REAL = '1';
 process.env.FORCE_LS2_REAL = '1';
+process.env.FORCE_HELMETHOUSE_REAL = '1';
 
 // Load environment variables from .env file
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
@@ -20,6 +21,7 @@ const { RestockImporter, BellImporter } = require('../services/importers');
 const amazonService = require('../services/amazon.service');
 const amazonDbService = require('../services/amazonDb.service');
 const ls2Service = require('../services/ftp/ftp.ls2.service');
+const helmethouseService = require('../services/ftp/ftp.helmethouse.service');
 
 async function createDefaultUsers() {
     console.log('Creating default users...');
@@ -257,6 +259,50 @@ async function resetAndImport() {
             }
         } catch (error) {
             console.error('Error during LS2 import:', error);
+            // Continue with other imports
+        }
+
+        // Import Helmet House data
+        console.log('Importing Helmet House data...');
+        try {
+            // Create Helmet House vendor in a transaction
+            const transaction = await sequelize.transaction();
+            try {
+                // Create Helmet House vendor
+                const [helmethouseVendor] = await Vendor.findOrCreate({
+                    where: { vendorName: 'Helmet House' },
+                    defaults: {
+                        vendorName: 'Helmet House',
+                        vendorCode: 'HELMHOUSE',
+                        active: true
+                    },
+                    transaction
+                });
+                console.log('Helmet House vendor created/found with ID:', helmethouseVendor.vendorId);
+
+                await transaction.commit();
+                console.log('Helmet House vendor setup completed successfully');
+
+                // Import all CSV files using the FTP service
+                const helmethouseResults = await helmethouseService.importAllFiles();
+                console.log('Helmet House import completed:', {
+                    totalFiles: helmethouseResults.totalFiles,
+                    successfulFiles: helmethouseResults.processed.filter(r => r.success).length,
+                    failedFiles: helmethouseResults.processed.filter(r => !r.success).length
+                });
+
+                // Show any Helmet House errors
+                const helmethouseErrors = helmethouseResults.processed.filter(r => !r.success);
+                if (helmethouseErrors.length > 0) {
+                    console.error('Helmet House import errors:', helmethouseErrors);
+                }
+            } catch (error) {
+                await transaction.rollback();
+                console.error('Error setting up Helmet House vendor:', error);
+                // Continue with other imports
+            }
+        } catch (error) {
+            console.error('Error during Helmet House import:', error);
             // Continue with other imports
         }
 

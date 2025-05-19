@@ -21,8 +21,8 @@ A robust Node.js microservice for managing vendor products, inventory, and marke
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 - [Vendor Data Fields Not Currently Implemented](#vendor-data-fields-not-currently-implemented)
-- [Recent Changes - Bell Import Integration](#recent-changes---bell-import-integration)
 - [Data Importers](#data-importers)
+- [Vendor Integrations](#vendor-integrations)
 
 ## Features
 
@@ -843,194 +843,54 @@ tests/
 
 ## Vendor Integrations
 
-### Supported Vendors
-The system currently supports the following vendors:
+### Helmet House Integration
+The Helmet House integration supports multiple brands and products through FTP file processing.
 
-#### LS2 Helmets
-- Integration Type: FTP
-- File Format: CSV
-- Update Frequency: Daily
-- Product Types: Helmets, Accessories
-- Status: Active
-
-#### Bell Powersports
-- Integration Type: OneDrive
-- File Format: Excel (.xlsx)
-- Update Frequency: As needed
-- Product Types: Helmets, Accessories
-- Source Path: `Vendor Files/Bell` (uses first Excel file found in folder)
-- Status: Active
-
-#### PartsUnlimited (Placeholder)
-- Integration Type: SFTP
-- File Format: CSV
-- Update Frequency: Daily
-- Status: Not Implemented - Basic structure in place for future integration
-
-#### HelmetHouse (Placeholder)
-- Integration Type: FTP
-- File Format: CSV
-- Update Frequency: Daily
-- Status: Not Implemented - Basic structure in place for future integration
-
-### Import Process
-Each vendor's data is imported through a standardized process:
-1. Vendor record creation/verification
-2. Brand association
-3. Source file detection (first file of correct type in vendor folder)
-4. Product import with standardized field mappings
-5. Distributor information updates
-6. Inventory tracking
-7. Price management
-
-### Vendor Data Fields
-Standard field mappings across vendors:
-- Vendor SKU → vendor_sku
-- Manufacturer Part → mfg_part
-- Product Name/Description → vendor_product_name
-- UPC/EAN → upc
-- MSRP → msrp
-- MAP Price → map_price
-- Cost → cost (in distributor_info)
-- Inventory → inventory_east, inventory_midwest, inventory_west
-
-### Vendor-Specific Fields Not Currently Implemented
-The following vendor-specific fields are available in source data but not currently imported:
-
-#### Bell Powersports
-- MODEL: Product model line (e.g., Broozer, Bullitt)
-- COLOR: Product color information
-
-#### LS2
-- [List any LS2-specific fields]
-
-#### PartsUnlimited
-- [List any PartsUnlimited-specific fields]
-
-### Database Structure
-Vendor data is stored across multiple related tables:
-- vendors: Core vendor information
-- vendor_brands: Brand management
-- vendor_products: Product catalog
-- vendor_product_attributes: Product characteristics
-- vendor_product_dimensions: Physical measurements
-- vendor_product_images: Product media
-- vendor_product_inventory: Stock levels
-- vendor_product_pricing: Pricing information
-- vendor_distributor_info: Distributor-specific data
-- vendor_vehicle_compatibility: Fitment data
-
-## Data Importers
-
-The application includes several data importers that handle different data sources and formats. Each importer is designed to handle large datasets efficiently through batch processing.
-
-### Importer Architecture
-
-```
-BaseImporter
-    ├── BellImporter
-    ├── RestockImporter
-    └── LS2Importer
+#### Configuration
+```env
+HELMETHOUSE_FTP_HOST=your_host
+HELMETHOUSE_FTP_USER=your_user
+HELMETHOUSE_FTP_PASSWORD=your_password
+HELMETHOUSE_FTP_SECURE=false  # Set to true for FTPS
 ```
 
-### Common Features
-- Batch processing with configurable batch sizes
-- Transaction-based database operations
-- Error handling and reporting
-- Progress tracking
-- Vendor and brand validation
+#### Features
+- Multi-brand support with dynamic brand creation and caching
+- Processes master.csv file from FTP server
+- Batch processing with configurable size (default: 5000)
+- Transaction-based data processing
+- Comprehensive error handling and logging
 
-### Importer Implementations
+#### Data Mapping
+- **Brand Management**
+  - Dynamic brand creation from CSV 'Brand' column
+  - Automatic brand code generation
+  - Brand-product relationship maintenance
 
-#### Bell Importer
-- **Source**: Excel files from OneDrive
-- **Format**: XLSX with specific column mappings
-- **Processing**:
-  - Batch size: 5000 records
-  - Validates vendor_id and brand_id
-  - Creates/updates vendor products
-  - Creates/updates distributor info
-  - Handles product attributes and pricing
+- **Product Information**
+  - SKU/Part Number mapping
+  - Product descriptions
+  - UPC codes
+  - Category/type classification
 
-#### LS2 Importer
-- **Source**: FTP server
-- **Format**: CSV files
-- **Processing**:
-  - Batch processing for large datasets
-  - Handles multiple file types (products, inventory, pricing)
-  - Updates existing records
-  - Maintains distributor relationships
+- **Pricing**
+  - MSRP (from 'Retail' field)
+  - MAP pricing (from 'MAPP Price' field)
+  - Dealer cost tracking
+  - Price history maintenance
 
-#### Restock Importer
-- **Source**: OneDrive CSV files
-- **Format**: CSV with specific column mappings
-- **Processing**:
-  - Batch size: 5000 records
-  - Creates/updates restock vitals
-  - Updates restock info and costs
-  - Handles status changes
+- **Inventory**
+  - East coast inventory levels
+  - West coast inventory levels
+  - Total inventory calculation
+  - Status tracking
 
-### Batch Processing
-The importers use an optimized batch processing approach:
-1. **Data Preparation**:
-   - Read source files in chunks
-   - Validate data format and required fields
-   - Transform data to match database schema
+- **Product Details**
+  - Color (limited to 20 characters)
+  - Size (limited to 20 characters)
+  - Dimensions (height, width, length)
+  - Weight specifications
 
-2. **Batch Operations**:
-   - Group records into configurable batch sizes
-   - Process each batch in a transaction
-   - Handle errors without failing entire import
-
-3. **Database Operations**:
-   - Use bulk create/update operations
-   - Maintain referential integrity
-   - Handle duplicates through upserts
-
-4. **Progress Tracking**:
-   - Monitor success/failure counts
-   - Report progress percentage
-   - Log errors for review
-
-### Usage Example
-```javascript
-// Bell Importer
-const bellImporter = new BellImporter();
-bellImporter.vendor_id = vendorId;
-bellImporter.brand_id = brandId;
-const result = await bellImporter.importFromOneDrive();
-
-// Results format
-{
-  total: 240,      // Total records processed
-  success: 240,    // Successfully imported
-  failed: 0        // Failed records
-}
-```
-
-### Error Handling
-- Individual record failures don't stop the import
-- Errors are collected and reported
-- Failed records can be reviewed and retried
-- Transaction rollback on batch failures
-
-### Best Practices
-1. **Memory Management**:
-   - Use appropriate batch sizes
-   - Process files in chunks
-   - Clean up temporary data
-
-2. **Data Validation**:
-   - Validate required fields
-   - Check data types and formats
-   - Verify foreign key relationships
-
-3. **Performance**:
-   - Use bulk operations
-   - Minimize database transactions
-   - Handle large datasets efficiently
-
-4. **Monitoring**:
-   - Track progress
-   - Log errors
-   - Report statistics
+### LS2 Integration
+- **FTP Configuration**
+  ```
