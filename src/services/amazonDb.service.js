@@ -24,7 +24,7 @@ class AmazonDbService extends BaseService {
     // Validate database config before using
     config.database.validate();
     
-    this.batchSize = 5000; // Increased from 1000 to 5000 given available RAM
+    this.batchSize = 10000; // Increased from 5000 to 10000 for faster import
   }
 
   /**

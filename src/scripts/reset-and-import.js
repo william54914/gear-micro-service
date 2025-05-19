@@ -108,6 +108,7 @@ async function createDefaultUsers() {
 
 async function resetAndImport() {
     console.log('Starting database reset and import process...');
+    const startTime = Date.now();
     
     try {
         // Drop all tables in the correct order (child tables first)
@@ -386,6 +387,8 @@ async function resetAndImport() {
         }
 
         console.log('All imports completed!');
+        const totalTime = (Date.now() - startTime) / 1000;
+        console.log(`Total import time: ${totalTime.toFixed(2)} seconds`);
         process.exit(0);
     } catch (error) {
         console.error('Error during import process:', error);

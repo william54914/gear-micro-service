@@ -33,7 +33,7 @@ class FtpAutomaticDistributorsService extends BaseService {
     this.vendorName = "Automatic Distributors";
     this.productsFileName = process.env.AUTODIST_PRODUCTS_FILE || "All Products.csv";
     this.priceInventoryFileName = process.env.AUTODIST_PRICE_INVENTORY_FILE || "All Products, Price and Inventory.csv";
-    this.batchSize = 5000;
+    this.batchSize = 10000;
     
     if (!fs.existsSync(this.tmpDir)) {
       fs.mkdirSync(this.tmpDir, { recursive: true });
@@ -43,7 +43,7 @@ class FtpAutomaticDistributorsService extends BaseService {
   async listFiles(remotePath = '.') {
     console.log('Listing files in directory:', remotePath);
     const files = await this.ftpService.listFiles(this.config, remotePath);
-    console.log('Found files:', files.map(f => `${f.name} (${f.size} bytes)`).join(', '));
+    // console.log('Found files:', files.map(f => `${f.name} (${f.size} bytes)`).join(', '));
     return files;
   }
 
@@ -362,17 +362,31 @@ class FtpAutomaticDistributorsService extends BaseService {
         const progress = Math.round(((batchIndex + 1) / batches.length) * 100);
         try {
           await models.sequelize.transaction(async (transaction) => {
+            // Fetch all products for this batch in one query
+            const skus = batch.map(data => data['SKU']);
+            const products = await models.VendorProduct.findAll({
+              where: { vendorId: vendor.vendorId, vendorSku: skus },
+              transaction
+            });
+            const productMap = new Map();
+            const mfgPartSet = new Set();
+            products.forEach(product => {
+              productMap.set(product.vendorSku, product);
+              if (product.mfgPart) mfgPartSet.add(product.mfgPart);
+            });
             for (const data of batch) {
               const sku = data['SKU'];
-              const product = await models.VendorProduct.findOne({
-                where: { vendorId: vendor.vendorId, vendorSku: sku },
-                transaction
-              });
+              const manufacturerPart = data['Manufacturer Number'];
+              if (!manufacturerPart || !mfgPartSet.has(manufacturerPart)) {
+                console.warn(`Skipping distributor info for SKU ${sku}: manufacturer part '${manufacturerPart}' not found in products.`);
+                continue;
+              }
+              const product = productMap.get(sku);
               if (!product) continue;
               // Update pricing and inventory fields
               await models.VendorDistributorInfo.upsert({
                 distributorPart: sku,
-                manufacturerPart: product.mfgPart,
+                manufacturerPart: manufacturerPart,
                 vendorId: vendor.vendorId,
                 cost: data['Standard_Dealer_Price'] ? parseFloat(data['Standard_Dealer_Price']) : null,
                 mapPrice: data['MAP_Pricing'] ? parseFloat(data['MAP_Pricing']) : null,

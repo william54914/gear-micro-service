@@ -13,7 +13,7 @@ class RestockImporter extends EventEmitter {
   constructor() {
     super();
     this.folderPath = 'Inventory Management/Restock Products';
-    this.batchSize = 5000;
+    this.batchSize = 10000;
     this.markMissingAsInactive = true;
     this.oneDrive = new OneDriveClient();
     this.successCount = 0;

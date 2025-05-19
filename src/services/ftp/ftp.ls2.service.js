@@ -40,6 +40,7 @@ class LS2FtpService extends BaseService {
   }
 
   async listFiles(remotePath = '.') {
+    // console.log('Listing files in directory:', remotePath);
     return await this.ftpService.listFiles(this.config, remotePath);
   }
 

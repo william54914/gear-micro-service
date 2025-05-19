@@ -32,7 +32,7 @@ class FtpHelmethouseService extends BaseService {
     this.tmpDir = path.join(__dirname, '../../../tmp');
     this.vendorName = "Helmet House";
     this.masterFileName = process.env.HELMETHOUSE_MASTER_FILE || "master.csv";
-    this.batchSize = 5000;
+    this.batchSize = 10000;
     
     if (!fs.existsSync(this.tmpDir)) {
       fs.mkdirSync(this.tmpDir, { recursive: true });
@@ -42,7 +42,7 @@ class FtpHelmethouseService extends BaseService {
   async listFiles(remotePath = '.') {
     console.log('Listing files in directory:', remotePath);
     const files = await this.ftpService.listFiles(this.config, remotePath);
-    console.log('Found files:', files.map(f => `${f.name} (${f.size} bytes)`).join(', '));
+    // console.log('Found files:', files.map(f => `${f.name} (${f.size} bytes)`).join(', '));
     return files;
   }
 
