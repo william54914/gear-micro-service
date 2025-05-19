@@ -306,6 +306,51 @@ async function resetAndImport() {
             // Continue with other imports
         }
 
+        // Import Automatic Distributors data
+        console.log('Importing Automatic Distributors data...');
+        try {
+            // Create Automatic Distributors vendor in a transaction
+            const transaction = await sequelize.transaction();
+            try {
+                // Create Automatic Distributors vendor
+                const [autodistVendor] = await Vendor.findOrCreate({
+                    where: { vendorName: 'Automatic Distributors' },
+                    defaults: {
+                        vendorName: 'Automatic Distributors',
+                        vendorCode: 'AUTODIST',
+                        active: true
+                    },
+                    transaction
+                });
+                console.log('Automatic Distributors vendor created/found with ID:', autodistVendor.vendorId);
+
+                await transaction.commit();
+                console.log('Automatic Distributors vendor setup completed successfully');
+
+                // Import all CSV files using the FTP service
+                const autodistService = require('../services/ftp/ftp.automaticdistributors.service');
+                const autodistResults = await autodistService.importAllFiles();
+                console.log('Automatic Distributors import completed:', {
+                    totalFiles: autodistResults.totalFiles,
+                    successfulFiles: autodistResults.processed.filter(r => r.success).length,
+                    failedFiles: autodistResults.processed.filter(r => !r.success).length
+                });
+
+                // Show any Automatic Distributors errors
+                const autodistErrors = autodistResults.processed.filter(r => !r.success);
+                if (autodistErrors.length > 0) {
+                    console.error('Automatic Distributors import errors:', autodistErrors);
+                }
+            } catch (error) {
+                await transaction.rollback();
+                console.error('Error setting up Automatic Distributors vendor:', error);
+                // Continue with other imports
+            }
+        } catch (error) {
+            console.error('Error during Automatic Distributors import:', error);
+            // Continue with other imports
+        }
+
         // Import Amazon data
         console.log('Starting Amazon import...');
         try {

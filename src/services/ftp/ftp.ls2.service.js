@@ -31,7 +31,7 @@ class LS2FtpService extends BaseService {
     this.ftpService = new FtpService(this.config);
     this.tmpDir = path.join(__dirname, '../../../tmp');
     this.vendorName = "LS2 Helmets";
-    this.inventoryFileName = "FlynCycle Inventory.csv";
+    this.inventoryFileName = process.env.LS2_INVENTORY_FILE || "FlynCycle Inventory.csv";
     this.batchSize = 5000;
     
     if (!fs.existsSync(this.tmpDir)) {

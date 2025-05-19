@@ -31,7 +31,7 @@ class FtpHelmethouseService extends BaseService {
     this.ftpService = new FtpService(this.config);
     this.tmpDir = path.join(__dirname, '../../../tmp');
     this.vendorName = "Helmet House";
-    this.masterFileName = "master.csv";  // The main file we want
+    this.masterFileName = process.env.HELMETHOUSE_MASTER_FILE || "master.csv";
     this.batchSize = 5000;
     
     if (!fs.existsSync(this.tmpDir)) {
